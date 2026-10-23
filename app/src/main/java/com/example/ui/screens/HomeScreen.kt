@@ -54,6 +54,9 @@ import com.example.ui.theme.CharcoalText
 import com.example.ui.theme.CoralLight
 import com.example.ui.theme.CoralPrimary
 import com.example.ui.theme.MutedSlate
+import com.example.ui.components.AiWellnessAssistantCard
+import com.example.ui.theme.PurpleAccent
+import com.example.ui.theme.PurpleLight
 import com.example.ui.theme.SoftCreamBackground
 import com.example.ui.theme.TealLight
 import com.example.ui.theme.TealSecondary
@@ -116,6 +119,7 @@ fun HomeScreen(
     val isStreetModeActive by viewModel.isStreetModeActive.collectAsState()
     val isAiDisguiseEnabled by viewModel.isAiDisguiseEnabled.collectAsState()
     val aiAliases by viewModel.aiDisguiseAliases.collectAsState()
+    val homeAiState by viewModel.homeAiInsightState.collectAsState()
 
     // El índice base cambia automáticamente cada día según la fecha del sistema
     var quoteOffset by remember(viewModel.todayDateString) { mutableIntStateOf(0) }
@@ -183,24 +187,23 @@ fun HomeScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        // Tarjeta de Cabecera con Imagen Relajante y Saludo Sereno
+        // Cabecera Minimalista con Imagen Sereno
         Card(
-            shape = RoundedCornerShape(22.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            shape = RoundedCornerShape(20.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(180.dp)
+                .height(140.dp)
                 .testTag("home_header_banner")
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 Image(
                     painter = painterResource(id = R.drawable.img_wellness_header),
-                    contentDescription = "Paisaje relajante de naturaleza y serenidad",
+                    contentDescription = "Paisaje relajante",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Degradado suave inferior para garantizar contraste y perfecta legibilidad del texto
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -208,7 +211,7 @@ fun HomeScreen(
                             Brush.verticalGradient(
                                 colors = listOf(
                                     Color.Black.copy(alpha = 0.05f),
-                                    Color.Black.copy(alpha = 0.65f)
+                                    Color.Black.copy(alpha = 0.6f)
                                 )
                             )
                         )
@@ -217,45 +220,34 @@ fun HomeScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                        .padding(horizontal = 18.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.Bottom
                 ) {
                     Text(
                         text = "Hola, $displayName",
-                        fontSize = 22.sp,
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
-                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
-                        text = "Un día y un paso a la vez. Tu bienestar y paz importan.",
-                        fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.95f),
-                        lineHeight = 18.sp
+                        text = "Un paso a la vez.",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.9f)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Sección limpia de actividades de hoy
-        Text(
-            text = "Resumen de Hoy",
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            color = CharcoalText,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-
-        // 2x2 Grid of Cards
+        // Cuadrícula 2x2 Minimalista
         Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             ActivityCard(
                 title = moodTitle,
-                category = "Estado de Ánimo",
+                category = "Ánimo",
                 subtitle = moodSubtitle,
                 icon = Icons.Default.Mood,
                 iconTint = CoralPrimary,
@@ -278,10 +270,10 @@ fun HomeScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             ActivityCard(
@@ -309,13 +301,13 @@ fun HomeScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Pensamiento Compasivo de Hoy (cambia automáticamente cada día)
+        // Pensamiento Compasivo Minimalista
         Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4F2)),
-            border = androidx.compose.foundation.BorderStroke(1.dp, CoralPrimary.copy(alpha = 0.2f)),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable {
@@ -324,51 +316,52 @@ fun HomeScreen(
                 .testTag("compassionate_thought_card")
         ) {
             Row(
-                verticalAlignment = Alignment.Top,
-                modifier = Modifier.padding(16.dp)
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(14.dp)
             ) {
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
-                        .background(CoralPrimary)
+                        .background(CoralLight)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Spa,
                         contentDescription = "Compasión",
-                        tint = Color.White,
-                        modifier = Modifier.size(26.dp)
+                        tint = CoralPrimary,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(14.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Pensamiento Compasivo de Hoy",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFC53030)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
                         text = "\"${compassionateQuotes[currentQuoteIndex]}\"",
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
                         color = CharcoalText
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Toca para leer otra reflexión",
-                        fontSize = 10.sp,
-                        color = MutedSlate.copy(alpha = 0.7f)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Asistente IA Compacto
+        AiWellnessAssistantCard(
+            title = "Guía de Hoy",
+            subtitle = "Balance breve de tu día con IA.",
+            buttonLabel = "Guía IA",
+            state = homeAiState,
+            onGenerateClick = { viewModel.generateHomeWellnessSummary() },
+            accentColor = PurpleAccent,
+            accentBgColor = PurpleLight,
+            testTag = "home_ai_assistant_card"
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
     }
 }
 
@@ -385,18 +378,18 @@ private fun ActivityCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = modifier
-            .heightIn(min = 135.dp)
+            .heightIn(min = 104.dp)
             .clickable(onClick = onClick)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -406,47 +399,39 @@ private fun ActivityCard(
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(10.dp))
                         .background(iconBg)
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = category,
                         tint = iconTint,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                     contentDescription = null,
-                    tint = MutedSlate.copy(alpha = 0.6f),
-                    modifier = Modifier.size(16.dp)
+                    tint = MutedSlate.copy(alpha = 0.5f),
+                    modifier = Modifier.size(14.dp)
                 )
             }
 
             Column {
                 Text(
                     text = title,
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = CharcoalText,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = category,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = categoryColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = subtitle,
+                    text = "$category • $subtitle",
                     fontSize = 11.sp,
-                    color = MutedSlate,
+                    color = categoryColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

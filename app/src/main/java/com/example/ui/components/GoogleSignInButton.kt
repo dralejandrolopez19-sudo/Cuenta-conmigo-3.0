@@ -217,7 +217,7 @@ fun onGoogleSignInClicked(
                     credentialManager.getCredential(activityContext, primaryRequest)
                 }
             } catch (primaryErr: Exception) {
-                if (primaryErr is CancellationException && primaryErr !is GetCredentialCancellationException) {
+                if (primaryErr is CancellationException) {
                     throw primaryErr
                 }
                 if (!clearStateBeforeRequest && primaryErr !is GetCredentialCancellationException) {

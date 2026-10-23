@@ -62,7 +62,8 @@ import com.example.ui.viewmodel.PendingDose
 fun PersistentMedicationAlarmDialog(
     pendingDoses: List<PendingDose>,
     onConfirmDose: (PendingDose) -> Unit,
-    onConfirmAllDoses: () -> Unit
+    onConfirmAllDoses: () -> Unit,
+    onSnoozeAlarm: () -> Unit = {}
 ) {
     if (pendingDoses.isEmpty()) return
 
@@ -316,6 +317,25 @@ fun PersistentMedicationAlarmDialog(
                             fontWeight = FontWeight.Bold
                         )
                     }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                androidx.compose.material3.OutlinedButton(
+                    onClick = onSnoozeAlarm,
+                    shape = RoundedCornerShape(18.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E0)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp)
+                        .testTag("snooze_alarm_5min_button")
+                ) {
+                    Text(
+                        text = "Posponer 5 min (buscar agua)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MutedSlate
+                    )
                 }
             }
         }

@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,12 +27,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CalendarToday
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -51,6 +51,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -65,9 +66,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.CalendarEvent
+import com.example.ui.components.AiWellnessAssistantCard
+import com.example.ui.components.PrivacyProtectedText
 import com.example.ui.theme.CharcoalText
 import com.example.ui.theme.CoralLight
 import com.example.ui.theme.CoralPrimary
@@ -77,7 +80,6 @@ import com.example.ui.theme.PurpleLight
 import com.example.ui.theme.SoftCreamBackground
 import com.example.ui.theme.TealLight
 import com.example.ui.theme.TealSecondary
-import com.example.ui.components.PrivacyProtectedText
 import com.example.ui.viewmodel.AppTab
 import com.example.ui.viewmodel.AppViewModel
 import java.text.SimpleDateFormat
@@ -92,9 +94,9 @@ private data class EventCategoryOption(
 )
 
 private val eventCategories = listOf(
-    EventCategoryOption("Terapia / Psicología", Icons.Default.Psychology, PurpleAccent, PurpleLight),
-    EventCategoryOption("Consulta Médica", Icons.Default.MedicalServices, TealSecondary, TealLight),
-    EventCategoryOption("Bienestar / Personal", Icons.Default.Spa, Color(0xFF2F855A), Color(0xFFE6FFFA)),
+    EventCategoryOption("Terapia", Icons.Default.Psychology, PurpleAccent, PurpleLight),
+    EventCategoryOption("Médico", Icons.Default.MedicalServices, TealSecondary, TealLight),
+    EventCategoryOption("Bienestar", Icons.Default.Spa, Color(0xFF2F855A), Color(0xFFE6FFFA)),
     EventCategoryOption("Recordatorio", Icons.Default.NotificationsActive, CoralPrimary, CoralLight)
 )
 
@@ -104,7 +106,7 @@ private fun formatReadableSpanishDate(dateStr: String): String {
         val parsed = parser.parse(dateStr) ?: return dateStr
         val formatter = SimpleDateFormat("EEEE, d 'de' MMMM", Locale.forLanguageTag("es-ES"))
         formatter.format(parsed).replaceFirstChar { it.uppercase() }
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         dateStr
     }
 }
@@ -118,31 +120,30 @@ fun AgendaScreen(
     val events by viewModel.calendarEvents.collectAsState()
     val moodEntries by viewModel.moodEntries.collectAsState()
     val journalEntries by viewModel.journalEntries.collectAsState()
-    val habits by viewModel.habits.collectAsState()
+    val agendaAiState by viewModel.agendaAiPrepState.collectAsState()
     val isStreetModeActive by viewModel.isStreetModeActive.collectAsState()
     val isAiDisguiseEnabled by viewModel.isAiDisguiseEnabled.collectAsState()
     val aiAliases by viewModel.aiDisguiseAliases.collectAsState()
     val revealedIds by viewModel.temporarilyRevealedIds.collectAsState()
 
     var showAddEventDialog by remember { mutableStateOf(false) }
+    var editingEvent by remember { mutableStateOf<CalendarEvent?>(null) }
 
-    // Inicializar año y mes a partir de selectedDate o fecha actual
-    val initialCal = remember {
-        val cal = Calendar.getInstance()
+    val initialCal = remember { Calendar.getInstance() }
+    var currentYear by remember { mutableIntStateOf(initialCal.get(Calendar.YEAR)) }
+    var currentMonth by remember { mutableIntStateOf(initialCal.get(Calendar.MONTH)) }
+
+    LaunchedEffect(selectedDate) {
         val parts = selectedDate.split("-")
         if (parts.size == 3) {
             val y = parts[0].toIntOrNull()
             val m = parts[1].toIntOrNull()
             if (y != null && m != null) {
-                cal.set(Calendar.YEAR, y)
-                cal.set(Calendar.MONTH, m - 1)
+                currentYear = y
+                currentMonth = m - 1
             }
         }
-        cal
     }
-
-    var currentYear by remember { mutableIntStateOf(initialCal.get(Calendar.YEAR)) }
-    var currentMonth by remember { mutableIntStateOf(initialCal.get(Calendar.MONTH)) }
 
     val monthCalendar = remember(currentYear, currentMonth) {
         Calendar.getInstance().apply {
@@ -157,29 +158,10 @@ fun AgendaScreen(
         sdf.format(monthCalendar.time).replaceFirstChar { it.uppercase() }
     }
 
-    val monthPrefix = remember(currentYear, currentMonth) {
-        String.format(Locale.US, "%04d-%02d", currentYear, currentMonth + 1)
-    }
-
     val daysInMonth = monthCalendar.getActualMaximum(Calendar.DAY_OF_MONTH)
     val firstDayOfWeek = (monthCalendar.get(Calendar.DAY_OF_WEEK) + 5) % 7
     val daysOfWeekLabels = listOf("L", "M", "X", "J", "V", "S", "D")
 
-    // Estadísticas del mes visualizado
-    val monthEventsCount = remember(events, monthPrefix) {
-        events.count { it.date.startsWith(monthPrefix) }
-    }
-    val monthMoodsCount = remember(moodEntries, monthPrefix) {
-        moodEntries.count { it.date.startsWith(monthPrefix) }
-    }
-    val monthJournalsCount = remember(journalEntries, monthPrefix) {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        journalEntries.count { entry ->
-            entry.createdAt?.toDate()?.let { sdf.format(it).startsWith(monthPrefix) } == true
-        }
-    }
-
-    // Registros del día seleccionado
     val dayEvents = remember(events, selectedDate) {
         events.filter { it.date == selectedDate }.sortedBy { it.time }
     }
@@ -192,14 +174,8 @@ fun AgendaScreen(
             entry.createdAt?.toDate()?.let { sdf.format(it) } == selectedDate
         }
     }
-    val dayCompletedHabits = remember(habits, selectedDate) {
-        habits.filter { it.completedDates.contains(selectedDate) }
-    }
 
-    val hasAnyActivities = dayEvents.isNotEmpty() ||
-        dayMood != null ||
-        dayJournals.isNotEmpty() ||
-        dayCompletedHabits.isNotEmpty()
+    val hasDayRecords = dayEvents.isNotEmpty() || dayMood != null || dayJournals.isNotEmpty()
 
     Box(
         modifier = modifier
@@ -212,111 +188,77 @@ fun AgendaScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            // Encabezado Principal con botón "Hoy" y "+ Cita"
+            // 1. Cabecera Minimalista
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Calendario y Agenda",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = CharcoalText,
-                        letterSpacing = (-0.4).sp
-                    )
-                    Text(
-                        text = "Tus citas, emociones y avances día a día.",
-                        fontSize = 13.sp,
-                        color = MutedSlate
-                    )
-                }
+                Text(
+                    text = "Agenda",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CharcoalText,
+                    letterSpacing = (-0.4).sp,
+                    modifier = Modifier.testTag("agenda_header_title")
+                )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = {
-                            val todayParts = viewModel.todayDateString.split("-")
-                            if (todayParts.size == 3) {
-                                currentYear = todayParts[0].toIntOrNull() ?: currentYear
-                                currentMonth = (todayParts[1].toIntOrNull() ?: (currentMonth + 1)) - 1
-                            }
-                            viewModel.selectCalendarDate(viewModel.todayDateString)
-                        },
-                        shape = RoundedCornerShape(20.dp),
-                        border = BorderStroke(1.dp, TealSecondary),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TealSecondary),
-                        modifier = Modifier.testTag("jump_to_today_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CalendarToday,
-                            contentDescription = "Ir a hoy",
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Hoy", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (selectedDate != viewModel.todayDateString) {
+                        OutlinedButton(
+                            onClick = { viewModel.selectCalendarDate(viewModel.todayDateString) },
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, TealSecondary.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = TealSecondary),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier
+                                .defaultMinSize(minWidth = 1.dp, minHeight = 32.dp)
+                                .height(32.dp)
+                                .testTag("today_quick_button")
+                        ) {
+                            Text("Hoy", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
 
                     Button(
-                        onClick = { showAddEventDialog = true },
-                        shape = RoundedCornerShape(20.dp),
+                        onClick = {
+                            editingEvent = null
+                            showAddEventDialog = true
+                        },
+                        shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = TealSecondary),
-                        modifier = Modifier.testTag("header_add_event_button")
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .defaultMinSize(minWidth = 1.dp, minHeight = 32.dp)
+                            .height(32.dp)
+                            .testTag("header_add_event_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Cita", fontSize = 13.sp)
+                        Text("Agendar", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Resumen Mensual Rápido
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                MonthStatChip(
-                    count = monthEventsCount,
-                    label = "Citas del mes",
-                    color = TealSecondary,
-                    bgColor = TealLight,
-                    modifier = Modifier.weight(1f)
-                )
-                MonthStatChip(
-                    count = monthMoodsCount,
-                    label = "Días con ánimo",
-                    color = CoralPrimary,
-                    bgColor = CoralLight,
-                    modifier = Modifier.weight(1f)
-                )
-                MonthStatChip(
-                    count = monthJournalsCount,
-                    label = "Notas de diario",
-                    color = PurpleAccent,
-                    bgColor = PurpleLight,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Tarjeta Principal del Calendario Mensual
+            // 2. Calendario Mensual Minimalista
             Card(
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("calendar_card")
             ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    // Cabecera de navegación de mes
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -330,18 +272,22 @@ fun AgendaScreen(
                                 } else {
                                     currentMonth -= 1
                                 }
-                            }
+                            },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("prev_month_button")
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Mes anterior",
-                                tint = CoralPrimary
+                                tint = CharcoalText,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
                         Text(
                             text = monthName,
-                            fontSize = 18.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = CharcoalText
                         )
@@ -354,260 +300,198 @@ fun AgendaScreen(
                                 } else {
                                     currentMonth += 1
                                 }
-                            }
+                            },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("next_month_button")
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                                 contentDescription = "Mes siguiente",
-                                tint = CoralPrimary
+                                tint = CharcoalText,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                    // Cabecera de días de la semana
+                    // Días de la semana
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround
+                        horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        daysOfWeekLabels.forEach { label ->
+                        daysOfWeekLabels.forEach { dayLabel ->
                             Text(
-                                text = label,
-                                fontSize = 13.sp,
+                                text = dayLabel,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MutedSlate,
                                 textAlign = TextAlign.Center,
-                                modifier = Modifier.width(38.dp)
+                                modifier = Modifier.width(34.dp)
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                    // Cuadrícula de semanas
-                    val totalSlots = firstDayOfWeek + daysInMonth
-                    val weeksCount = (totalSlots + 6) / 7
-                    val sdfJournal = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
+                    // Cuadrícula limpia del mes
+                    val totalCells = firstDayOfWeek + daysInMonth
+                    val rows = (totalCells + 6) / 7
 
-                    for (week in 0 until weeksCount) {
+                    for (r in 0 until rows) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 3.dp),
-                            horizontalArrangement = Arrangement.SpaceAround
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
-                            for (dayOfWeek in 0..6) {
-                                val slotIndex = week * 7 + dayOfWeek
-                                val dayNum = slotIndex - firstDayOfWeek + 1
+                            for (c in 0 until 7) {
+                                val cellIndex = r * 7 + c
+                                val dayNumber = cellIndex - firstDayOfWeek + 1
 
-                                if (dayNum in 1..daysInMonth) {
+                                if (dayNumber in 1..daysInMonth) {
                                     val dateStr = String.format(
                                         Locale.US,
                                         "%04d-%02d-%02d",
                                         currentYear,
                                         currentMonth + 1,
-                                        dayNum
+                                        dayNumber
                                     )
                                     val isSelected = dateStr == selectedDate
                                     val isToday = dateStr == viewModel.todayDateString
-
-                                    val hasMood = moodEntries.any { it.date == dateStr }
-                                    val hasJournal = journalEntries.any {
-                                        it.createdAt?.toDate()?.let { d -> sdfJournal.format(d) } == dateStr
-                                    }
                                     val hasEvent = events.any { it.date == dateStr }
-                                    val hasHabit = habits.any { it.completedDates.contains(dateStr) }
+                                    val hasMood = moodEntries.any { it.date == dateStr }
 
                                     Box(
                                         contentAlignment = Alignment.Center,
                                         modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(RoundedCornerShape(12.dp))
+                                            .size(34.dp)
+                                            .clip(CircleShape)
                                             .background(
                                                 when {
-                                                    isSelected -> CoralPrimary
-                                                    isToday -> CoralLight.copy(alpha = 0.6f)
+                                                    isSelected -> TealSecondary
+                                                    isToday -> TealLight
                                                     else -> Color.Transparent
                                                 }
                                             )
                                             .then(
                                                 if (isToday && !isSelected) {
-                                                    Modifier.border(
-                                                        1.5.dp,
-                                                        CoralPrimary,
-                                                        RoundedCornerShape(12.dp)
-                                                    )
+                                                    Modifier.border(1.dp, TealSecondary, CircleShape)
                                                 } else {
                                                     Modifier
                                                 }
                                             )
                                             .clickable { viewModel.selectCalendarDate(dateStr) }
+                                            .testTag("calendar_day_$dayNumber")
                                     ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text(
-                                                text = "$dayNum",
-                                                fontSize = 14.sp,
-                                                fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Medium,
-                                                color = when {
-                                                    isSelected -> Color.White
-                                                    isToday -> CoralPrimary
-                                                    else -> CharcoalText
-                                                }
+                                                text = "$dayNumber",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) Color.White else CharcoalText
                                             )
 
-                                            // Indicadores de actividad del día
-                                            if (hasMood || hasJournal || hasEvent || hasHabit) {
-                                                Row(
-                                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                                    modifier = Modifier.padding(top = 1.dp)
-                                                ) {
-                                                    if (hasEvent) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(4.dp)
-                                                                .clip(CircleShape)
-                                                                .background(if (isSelected) Color.White else TealSecondary)
+                                            if (hasEvent || hasMood) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(4.dp)
+                                                        .clip(CircleShape)
+                                                        .background(
+                                                            when {
+                                                                isSelected -> Color.White
+                                                                hasEvent -> TealSecondary
+                                                                else -> CoralPrimary
+                                                            }
                                                         )
-                                                    }
-                                                    if (hasMood) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(4.dp)
-                                                                .clip(CircleShape)
-                                                                .background(if (isSelected) Color.White else CoralPrimary)
-                                                        )
-                                                    }
-                                                    if (hasJournal) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(4.dp)
-                                                                .clip(CircleShape)
-                                                                .background(if (isSelected) Color.White else PurpleAccent)
-                                                        )
-                                                    }
-                                                    if (hasHabit) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(4.dp)
-                                                                .clip(CircleShape)
-                                                                .background(if (isSelected) Color.White else Color(0xFF38A169))
-                                                        )
-                                                    }
-                                                }
+                                                )
                                             }
                                         }
                                     }
                                 } else {
-                                    Spacer(modifier = Modifier.size(40.dp))
+                                    Spacer(modifier = Modifier.size(34.dp))
                                 }
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Leyenda de puntos de actividad
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        LegendItem(color = TealSecondary, label = "Cita")
-                        LegendItem(color = CoralPrimary, label = "Ánimo")
-                        LegendItem(color = PurpleAccent, label = "Diario")
-                        LegendItem(color = Color(0xFF38A169), label = "Hábito")
-                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Cabecera de Actividades de la Fecha Seleccionada
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = formatReadableSpanishDate(selectedDate),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = CharcoalText
-                )
-                Text(
-                    text = if (selectedDate == viewModel.todayDateString) "Registros y agenda de hoy ($selectedDate)" else "Registros del $selectedDate",
-                    fontSize = 12.sp,
-                    color = MutedSlate
-                )
-            }
+            // 3. Fecha Seleccionada y Citas del Día
+            Text(
+                text = formatReadableSpanishDate(selectedDate),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = CharcoalText,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Contenido del Día Seleccionado
-            if (!hasAnyActivities) {
+            if (!hasDayRecords) {
                 Card(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = Color.White),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            editingEvent = null
+                            showAddEventDialog = true
+                        }
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 28.dp, horizontal = 20.dp)
+                            .padding(14.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.EventAvailable,
-                            contentDescription = null,
-                            tint = Color(0xFFCBD5E0),
-                            modifier = Modifier.size(44.dp)
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.EventAvailable,
+                                contentDescription = null,
+                                tint = MutedSlate.copy(alpha = 0.6f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Sin citas en esta fecha",
+                                fontSize = 13.sp,
+                                color = MutedSlate
+                            )
+                        }
                         Text(
-                            text = "No hay citas ni registros en esta fecha",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = CharcoalText,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Pulsa '+ Cita' arriba para programar una consulta, sesión de terapia o recordatorio personal.",
+                            text = "+ Añadir cita",
                             fontSize = 12.sp,
-                            color = MutedSlate,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 17.sp
+                            fontWeight = FontWeight.Bold,
+                            color = TealSecondary
                         )
                     }
                 }
             } else {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    // Citas y Eventos programados para ese día
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     dayEvents.forEach { ev ->
                         val eventItemId = "agenda_${ev.id}"
                         val isEventRevealed = revealedIds.contains(eventItemId)
-                        val catOption = eventCategories.firstOrNull { it.label == ev.type }
-                            ?: EventCategoryOption(ev.type.ifBlank { "Cita/Evento" }, Icons.Default.CalendarMonth, TealSecondary, TealLight)
+                        val catOption = eventCategories.firstOrNull { ev.type.contains(it.label, ignoreCase = true) }
+                            ?: EventCategoryOption(ev.type.ifBlank { "Cita" }, Icons.Default.CalendarMonth, TealSecondary, TealLight)
 
                         Card(
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(14.dp)
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
                             ) {
                                 Box(
                                     contentAlignment = Alignment.Center,
                                     modifier = Modifier
-                                        .size(42.dp)
+                                        .size(34.dp)
                                         .clip(CircleShape)
                                         .background(catOption.bgColor)
                                 ) {
@@ -615,389 +499,247 @@ fun AgendaScreen(
                                         imageVector = catOption.icon,
                                         contentDescription = null,
                                         tint = catOption.tint,
-                                        modifier = Modifier.size(22.dp)
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
-                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        PrivacyProtectedText(
-                                            realText = ev.title,
-                                            itemId = eventItemId,
-                                            isStreetModeActive = isStreetModeActive,
-                                            isRevealed = isEventRevealed,
-                                            isAiDisguiseEnabled = isAiDisguiseEnabled,
-                                            aiDisguiseText = aiAliases.agendaAlias,
-                                            onRevealClick = { viewModel.revealPrivacyItemTemporarily(eventItemId) },
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp,
-                                            color = CharcoalText,
-                                            modifier = Modifier.weight(1f, fill = false)
-                                        )
-                                        if (ev.time.isNotBlank()) {
-                                            Surface(
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = catOption.bgColor
-                                            ) {
-                                                Text(
-                                                    text = ev.time,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 11.sp,
-                                                    color = catOption.tint,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                    Text(
-                                        text = if (isStreetModeActive && !isEventRevealed) "Compromiso personal" else ev.type.ifBlank { "Cita / Evento" },
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = catOption.tint
+                                    PrivacyProtectedText(
+                                        realText = ev.title,
+                                        itemId = eventItemId,
+                                        isStreetModeActive = isStreetModeActive,
+                                        isRevealed = isEventRevealed,
+                                        isAiDisguiseEnabled = isAiDisguiseEnabled,
+                                        aiDisguiseText = aiAliases.agendaAlias,
+                                        onRevealClick = { viewModel.revealPrivacyItemTemporarily(eventItemId) },
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = CharcoalText
                                     )
                                     if (ev.notes.isNotBlank()) {
-                                        Spacer(modifier = Modifier.height(2.dp))
                                         PrivacyProtectedText(
                                             realText = ev.notes,
                                             itemId = eventItemId,
                                             isStreetModeActive = isStreetModeActive,
                                             isRevealed = isEventRevealed,
                                             isAiDisguiseEnabled = isAiDisguiseEnabled,
-                                            aiDisguiseText = "Nota de agenda privada",
+                                            aiDisguiseText = "Nota privada",
                                             onRevealClick = { viewModel.revealPrivacyItemTemporarily(eventItemId) },
-                                            fontSize = 12.sp,
-                                            color = MutedSlate
+                                            fontSize = 11.sp,
+                                            color = MutedSlate,
+                                            maxLines = 1
                                         )
                                     }
                                 }
-                                IconButton(onClick = { viewModel.deleteCalendarEvent(ev.id) }) {
+
+                                if (ev.time.isNotBlank()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = catOption.bgColor
+                                    ) {
+                                        Text(
+                                            text = ev.time,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            color = catOption.tint,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        editingEvent = ev
+                                        showAddEventDialog = true
+                                    },
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .testTag("edit_event_${ev.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Editar cita",
+                                        tint = TealSecondary,
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = { viewModel.deleteCalendarEvent(ev.id) },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
                                     Icon(
                                         imageVector = Icons.Default.DeleteOutline,
                                         contentDescription = "Eliminar cita",
-                                        tint = MutedSlate.copy(alpha = 0.6f)
+                                        tint = MutedSlate.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(17.dp)
                                     )
                                 }
                             }
                         }
                     }
 
-                    // Estado de Ánimo del día
                     if (dayMood != null) {
                         val dayMoodItemId = "agenda_mood_${dayMood.id}"
                         val isDayMoodRevealed = revealedIds.contains(dayMoodItemId)
                         Card(
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(14.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    if (isStreetModeActive && !isDayMoodRevealed) {
-                                        viewModel.revealPrivacyItemTemporarily(dayMoodItemId)
-                                    } else {
-                                        viewModel.selectTab(AppTab.ANIMO)
-                                    }
-                                }
+                                .clickable { viewModel.selectTab(AppTab.ANIMO) }
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(14.dp)
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
                             ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(CoralLight)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Mood,
-                                        contentDescription = null,
-                                        tint = CoralPrimary,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    PrivacyProtectedText(
-                                        realText = "Estado de Ánimo: ${dayMood.levelLabel}",
-                                        itemId = dayMoodItemId,
-                                        isStreetModeActive = isStreetModeActive,
-                                        isRevealed = isDayMoodRevealed,
-                                        isAiDisguiseEnabled = isAiDisguiseEnabled,
-                                        aiDisguiseText = aiAliases.moodAlias,
-                                        onRevealClick = { viewModel.revealPrivacyItemTemporarily(dayMoodItemId) },
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        color = CharcoalText
-                                    )
-                                    if (dayMood.feelings.isNotEmpty() || dayMood.note.isNotBlank()) {
-                                        val moodDetails = listOfNotNull(
-                                            dayMood.feelings.joinToString(", ").ifBlank { null },
-                                            dayMood.note.ifBlank { null }
-                                        ).joinToString(" • ")
-                                        PrivacyProtectedText(
-                                            realText = moodDetails,
-                                            itemId = dayMoodItemId,
-                                            isStreetModeActive = isStreetModeActive,
-                                            isRevealed = isDayMoodRevealed,
-                                            isAiDisguiseEnabled = isAiDisguiseEnabled,
-                                            aiDisguiseText = "Balance diario registrado",
-                                            onRevealClick = { viewModel.revealPrivacyItemTemporarily(dayMoodItemId) },
-                                            fontSize = 12.sp,
-                                            color = MutedSlate,
-                                            maxLines = 2
-                                        )
-                                    }
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.Mood,
+                                    contentDescription = null,
+                                    tint = CoralPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                PrivacyProtectedText(
+                                    realText = "Ánimo registrado: ${dayMood.levelLabel}",
+                                    itemId = dayMoodItemId,
+                                    isStreetModeActive = isStreetModeActive,
+                                    isRevealed = isDayMoodRevealed,
+                                    isAiDisguiseEnabled = isAiDisguiseEnabled,
+                                    aiDisguiseText = aiAliases.moodAlias,
+                                    onRevealClick = { viewModel.revealPrivacyItemTemporarily(dayMoodItemId) },
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp,
+                                    color = CharcoalText
+                                )
                             }
                         }
                     }
 
-                    // Entradas de Diario del día
                     dayJournals.forEach { journal ->
                         val dayJournalId = "agenda_journal_${journal.id}"
                         val isDayJournalRevealed = revealedIds.contains(dayJournalId)
                         Card(
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(14.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    if (isStreetModeActive && !isDayJournalRevealed) {
-                                        viewModel.revealPrivacyItemTemporarily(dayJournalId)
-                                    } else {
-                                        viewModel.selectTab(AppTab.DIARIO)
-                                    }
-                                }
+                                .clickable { viewModel.selectTab(AppTab.DIARIO) }
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(14.dp)
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
                             ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(PurpleLight)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                                        contentDescription = null,
-                                        tint = PurpleAccent,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    PrivacyProtectedText(
-                                        realText = "Diario: ${journal.title}",
-                                        itemId = dayJournalId,
-                                        isStreetModeActive = isStreetModeActive,
-                                        isRevealed = isDayJournalRevealed,
-                                        isAiDisguiseEnabled = isAiDisguiseEnabled,
-                                        aiDisguiseText = aiAliases.diaryAlias,
-                                        onRevealClick = { viewModel.revealPrivacyItemTemporarily(dayJournalId) },
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        color = CharcoalText
-                                    )
-                                    PrivacyProtectedText(
-                                        realText = journal.content,
-                                        itemId = dayJournalId,
-                                        isStreetModeActive = isStreetModeActive,
-                                        isRevealed = isDayJournalRevealed,
-                                        isAiDisguiseEnabled = isAiDisguiseEnabled,
-                                        aiDisguiseText = "Apunte privado • Toca para ver",
-                                        onRevealClick = { viewModel.revealPrivacyItemTemporarily(dayJournalId) },
-                                        fontSize = 12.sp,
-                                        color = MutedSlate,
-                                        maxLines = 2
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Hábitos completados ese día
-                    if (dayCompletedHabits.isNotEmpty()) {
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { viewModel.selectTab(AppTab.HABITOS) }
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(14.dp)
-                            ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFFC6F6D5))
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = null,
-                                        tint = Color(0xFF2F855A),
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Hábitos completados (${dayCompletedHabits.size})",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        color = CharcoalText
-                                    )
-                                    Text(
-                                        text = dayCompletedHabits.joinToString(", ") { it.name },
-                                        fontSize = 12.sp,
-                                        color = MutedSlate
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                                    contentDescription = null,
+                                    tint = PurpleAccent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                PrivacyProtectedText(
+                                    realText = "Diario: ${journal.title}",
+                                    itemId = dayJournalId,
+                                    isStreetModeActive = isStreetModeActive,
+                                    isRevealed = isDayJournalRevealed,
+                                    isAiDisguiseEnabled = isAiDisguiseEnabled,
+                                    aiDisguiseText = aiAliases.diaryAlias,
+                                    onRevealClick = { viewModel.revealPrivacyItemTemporarily(dayJournalId) },
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp,
+                                    color = CharcoalText
+                                )
                             }
                         }
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 4. Asistente IA Compacto al pie
+            AiWellnessAssistantCard(
+                title = "Preparador de Cita",
+                subtitle = "Preguntas clave para tu consulta o balance del día.",
+                buttonLabel = "Preparar",
+                state = agendaAiState,
+                onGenerateClick = { viewModel.generateAgendaAiPreparation(selectedDate) },
+                accentColor = PurpleAccent,
+                accentBgColor = PurpleLight,
+                testTag = "agenda_ai_card"
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
         }
 
         if (showAddEventDialog) {
             AddEventDialog(
-                date = selectedDate,
-                onDismiss = { showAddEventDialog = false },
-                onSave = { title, type, date, time, notes ->
-                    viewModel.addCalendarEvent(title, type, date, time, notes)
+                initialDate = editingEvent?.date ?: selectedDate,
+                initialEvent = editingEvent,
+                onDismiss = {
                     showAddEventDialog = false
+                    editingEvent = null
+                },
+                onSave = { title, type, date, time, notes ->
+                    val existing = editingEvent
+                    if (existing != null) {
+                        viewModel.updateCalendarEvent(existing, title, type, date, time, notes)
+                    } else {
+                        viewModel.addCalendarEvent(title, type, date, time, notes)
+                    }
+                    showAddEventDialog = false
+                    editingEvent = null
                 }
             )
         }
-    }
-}
-
-@Composable
-private fun MonthStatChip(
-    count: Int,
-    label: String,
-    color: Color,
-    bgColor: Color,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = Color.White,
-        shadowElevation = 1.dp,
-        modifier = modifier
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp)
-        ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(bgColor)
-                    .padding(horizontal = 10.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = "$count",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = color
-                )
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = label,
-                fontSize = 11.sp,
-                color = MutedSlate,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-private fun LegendItem(color: Color, label: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(color)
-        )
-        Spacer(modifier = Modifier.width(5.dp))
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = MutedSlate
-        )
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AddEventDialog(
-    date: String,
+    initialDate: String,
+    initialEvent: CalendarEvent? = null,
     onDismiss: () -> Unit,
     onSave: (title: String, type: String, date: String, time: String, notes: String) -> Unit
 ) {
-    var title by remember { mutableStateOf("") }
-    var time by remember { mutableStateOf("10:00") }
-    var notes by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf(eventCategories.first().label) }
-    var showTimePicker by remember { mutableStateOf(false) }
+    var title by remember(initialEvent) { mutableStateOf(initialEvent?.title ?: "") }
+    var notes by remember(initialEvent) { mutableStateOf(initialEvent?.notes ?: "") }
+    var selectedType by remember(initialEvent) {
+        mutableStateOf(initialEvent?.type?.ifBlank { eventCategories.first().label } ?: eventCategories.first().label)
+    }
 
-    val quickTimes = listOf("09:00", "11:00", "16:00", "18:00")
+    val initialTimeParts = (initialEvent?.time ?: "10:00").split(":")
+    var hour by remember(initialEvent) { mutableIntStateOf(initialTimeParts.getOrNull(0)?.toIntOrNull() ?: 10) }
+    var minute by remember(initialEvent) { mutableIntStateOf(initialTimeParts.getOrNull(1)?.toIntOrNull() ?: 0) }
+    val formattedTime = String.format(Locale.US, "%02d:%02d", hour, minute)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(
-                text = "Agendar Cita o Evento",
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                color = CharcoalText
-            )
+            Column {
+                Text(
+                    text = if (initialEvent != null) "Editar Cita" else "Nueva Cita",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    color = CharcoalText
+                )
+                Text(
+                    text = formatReadableSpanishDate(initialDate),
+                    fontSize = 12.sp,
+                    color = TealSecondary
+                )
+            }
         },
         text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState())
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = TealLight,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "Fecha: ${formatReadableSpanishDate(date)} ($date)",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TealSecondary,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("Título de la cita o evento") },
-                    placeholder = { Text("Ej. Sesión de psicología, Control médico") },
+                    label = { Text("Motivo o título") },
+                    placeholder = { Text("Ej. Psicología, Control médico") },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
@@ -1005,15 +747,7 @@ private fun AddEventDialog(
                         .testTag("event_title_input")
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    text = "Categoría:",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MutedSlate
-                )
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1026,78 +760,78 @@ private fun AddEventDialog(
                             color = if (isSelected) cat.tint else Color(0xFFEDF2F7),
                             modifier = Modifier.clickable { selectedType = cat.label }
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
+                            Text(
+                                text = cat.label,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) Color.White else CharcoalText,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = cat.icon,
-                                    contentDescription = null,
-                                    tint = if (isSelected) Color.White else cat.tint,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = cat.label,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) Color.White else CharcoalText
-                                )
-                            }
+                            )
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Text(
-                    text = "Hora de la cita:",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MutedSlate
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    quickTimes.forEach { qTime ->
-                        val isSelected = time == qTime
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) TealSecondary else Color(0xFFEDF2F7))
-                                .clickable { time = qTime }
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                // Selector directo de Hora (HH:mm)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFFF8FAFC))
+                        .padding(vertical = 6.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        IconButton(
+                            onClick = { hour = (hour + 1) % 24 },
+                            modifier = Modifier.size(28.dp)
                         ) {
-                            Text(
-                                text = qTime,
-                                fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) Color.White else CharcoalText
-                            )
+                            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Subir hora", tint = TealSecondary)
+                        }
+                        Text(
+                            text = String.format(Locale.US, "%02d", hour),
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = CharcoalText
+                        )
+                        IconButton(
+                            onClick = { hour = (hour - 1 + 24) % 24 },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Bajar hora", tint = TealSecondary)
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedButton(
-                    onClick = { showTimePicker = true },
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, TealSecondary),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TealSecondary),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AccessTime,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Hora seleccionada: $time (Cambiar HH:mm)",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
+                        text = ":",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CharcoalText,
+                        modifier = Modifier.padding(horizontal = 10.dp)
                     )
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        IconButton(
+                            onClick = { minute = (minute + 15) % 60 },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Subir minuto", tint = TealSecondary)
+                        }
+                        Text(
+                            text = String.format(Locale.US, "%02d", minute),
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = CharcoalText
+                        )
+                        IconButton(
+                            onClick = { minute = (minute - 15 + 60) % 60 },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Bajar minuto", tint = TealSecondary)
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -1105,8 +839,8 @@ private fun AddEventDialog(
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
-                    label = { Text("Notas o preguntas para la cita (opcional)") },
-                    placeholder = { Text("Ej. Llevar resultados, comentar sueño...") },
+                    label = { Text("Notas (opcional)") },
+                    singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1116,11 +850,11 @@ private fun AddEventDialog(
             Button(
                 onClick = {
                     if (title.isNotBlank()) {
-                        onSave(title.trim(), selectedType, date, time.trim(), notes.trim())
+                        onSave(title.trim(), selectedType, initialDate, formattedTime, notes.trim())
                     }
                 },
                 enabled = title.isNotBlank(),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = TealSecondary),
                 modifier = Modifier.testTag("save_event_button")
             ) {
@@ -1130,128 +864,12 @@ private fun AddEventDialog(
         dismissButton = {
             OutlinedButton(
                 onClick = onDismiss,
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(12.dp)
             ) {
                 Text("Cancelar")
             }
         },
-        shape = RoundedCornerShape(24.dp),
-        containerColor = Color.White
-    )
-
-    if (showTimePicker) {
-        EventTimePickerDialog(
-            initialTime = time,
-            onDismiss = { showTimePicker = false },
-            onTimeConfirmed = { newTime ->
-                time = newTime
-                showTimePicker = false
-            }
-        )
-    }
-}
-
-@Composable
-private fun EventTimePickerDialog(
-    initialTime: String,
-    onDismiss: () -> Unit,
-    onTimeConfirmed: (String) -> Unit
-) {
-    val parts = initialTime.split(":")
-    var hour by remember { mutableIntStateOf(parts.getOrNull(0)?.toIntOrNull() ?: 10) }
-    var minute by remember { mutableIntStateOf(parts.getOrNull(1)?.toIntOrNull() ?: 0) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = "Elegir Hora de la Cita",
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                color = CharcoalText
-            )
-        },
-        text = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    IconButton(onClick = { hour = (hour + 1) % 24 }) {
-                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Subir hora", tint = TealSecondary)
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = TealLight,
-                        border = BorderStroke(1.5.dp, TealSecondary)
-                    ) {
-                        Text(
-                            text = String.format(Locale.US, "%02d", hour),
-                            fontSize = 26.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = CharcoalText,
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
-                        )
-                    }
-                    IconButton(onClick = { hour = (hour - 1 + 24) % 24 }) {
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Bajar hora", tint = TealSecondary)
-                    }
-                    Text("Hora", fontSize = 11.sp, color = MutedSlate)
-                }
-
-                Text(
-                    text = ":",
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = CharcoalText,
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    IconButton(onClick = { minute = (minute + 5) % 60 }) {
-                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Subir minutos", tint = TealSecondary)
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = TealLight,
-                        border = BorderStroke(1.5.dp, TealSecondary)
-                    ) {
-                        Text(
-                            text = String.format(Locale.US, "%02d", minute),
-                            fontSize = 26.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = CharcoalText,
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
-                        )
-                    }
-                    IconButton(onClick = { minute = (minute - 5 + 60) % 60 }) {
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Bajar minutos", tint = TealSecondary)
-                    }
-                    Text("Minutos", fontSize = 11.sp, color = MutedSlate)
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onTimeConfirmed(String.format(Locale.US, "%02d:%02d", hour, minute))
-                },
-                shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = TealSecondary)
-            ) {
-                Text("Confirmar")
-            }
-        },
-        dismissButton = {
-            OutlinedButton(
-                onClick = onDismiss,
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                Text("Cancelar")
-            }
-        },
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(20.dp),
         containerColor = Color.White
     )
 }

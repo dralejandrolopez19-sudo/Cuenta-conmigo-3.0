@@ -311,6 +311,9 @@ fun AppMainContent(
             },
             onConfirmAllDoses = {
                 viewModel.confirmAllAlarmDoses()
+            },
+            onSnoozeAlarm = {
+                viewModel.snoozeMedicationAlarm(5)
             }
         )
     }

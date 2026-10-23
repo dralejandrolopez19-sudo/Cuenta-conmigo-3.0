@@ -8,7 +8,6 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
-import android.os.Build
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint

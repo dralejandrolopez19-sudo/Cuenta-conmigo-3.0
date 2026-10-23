@@ -23,8 +23,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.ScreenLockPortrait
 import androidx.compose.material.icons.filled.Security
@@ -450,7 +450,7 @@ fun StreetPrivacySettingsDialog(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(
-                                imageVector = Icons.Default.DirectionsWalk,
+                                imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
                                 contentDescription = null,
                                 tint = TealSecondary,
                                 modifier = Modifier.size(22.dp)

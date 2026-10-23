@@ -26,7 +26,6 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -37,7 +36,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -55,13 +53,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.JournalEntry
+import com.example.ui.components.AiWellnessAssistantCard
 import com.example.ui.components.PrivacyProtectedText
 import com.example.ui.theme.CharcoalText
 import com.example.ui.theme.CoralLight
 import com.example.ui.theme.CoralPrimary
 import com.example.ui.theme.MutedSlate
+import com.example.ui.theme.PurpleAccent
+import com.example.ui.theme.PurpleLight
 import com.example.ui.theme.SoftCreamBackground
-import com.example.ui.theme.TealLight
 import com.example.ui.theme.TealSecondary
 import com.example.ui.viewmodel.AppViewModel
 import com.google.firebase.Firebase
@@ -82,6 +82,7 @@ fun DiaryScreen(
     val isAiDisguiseEnabled by viewModel.isAiDisguiseEnabled.collectAsState()
     val aiAliases by viewModel.aiDisguiseAliases.collectAsState()
     val revealedIds by viewModel.temporarilyRevealedIds.collectAsState()
+    val diaryAiState by viewModel.diaryAiReflectionState.collectAsState()
     var showDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
 
@@ -105,156 +106,145 @@ fun DiaryScreen(
                 .fillMaxSize()
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            // Header with Export to PDF button
+            // Cabecera Minimalista con botones compactos
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Diario de Pensamientos",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = CharcoalText,
-                        letterSpacing = (-0.4).sp
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "Registra tus pensamientos y practica la reestructuración cognitiva.",
-                        fontSize = 13.sp,
-                        color = MutedSlate,
-                        lineHeight = 18.sp
-                    )
-                }
+                Text(
+                    text = "Diario",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CharcoalText,
+                    letterSpacing = (-0.4).sp
+                )
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { showExportDialog = true },
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, TealSecondary.copy(alpha = 0.5f)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Color.White,
+                            contentColor = TealSecondary
+                        ),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .height(32.dp)
+                            .testTag("export_pdf_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PictureAsPdf,
+                            contentDescription = "Exportar a PDF",
+                            modifier = Modifier.size(14.dp),
+                            tint = TealSecondary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "PDF",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TealSecondary
+                        )
+                    }
 
-                OutlinedButton(
-                    onClick = { showExportDialog = true },
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, TealSecondary.copy(alpha = 0.5f)),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = Color.White,
-                        contentColor = TealSecondary
-                    ),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    modifier = Modifier.testTag("export_pdf_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PictureAsPdf,
-                        contentDescription = "Exportar a PDF",
-                        modifier = Modifier.size(17.dp),
-                        tint = TealSecondary
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "PDF",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TealSecondary
-                    )
+                    Button(
+                        onClick = { showDialog = true },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = CoralPrimary),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .height(32.dp)
+                            .testTag("add_journal_header_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Escribir", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Search Bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { viewModel.setJournalSearchQuery(it) },
-                placeholder = {
-                    Text(
-                        text = "Buscar en tus notas y pensamientos...",
-                        fontSize = 14.sp,
-                        color = MutedSlate.copy(alpha = 0.8f)
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Buscar",
-                        tint = MutedSlate
-                    )
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = CharcoalText.copy(alpha = 0.6f),
-                    unfocusedBorderColor = Color(0xFFCBD5E0),
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Color.White
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("journal_search_field")
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Filter Chips
+            // Chips de filtro compactos
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 categories.forEach { cat ->
                     val isSelected = selectedCategory == cat
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(if (isSelected) CoralPrimary else Color(0xFFEDF2F7))
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (isSelected) CoralPrimary else Color.White)
                             .clickable { viewModel.setJournalCategoryFilter(cat) }
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Text(
                             text = cat,
-                            fontSize = 13.sp,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                             color = if (isSelected) Color.White else CharcoalText
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Content or Empty State
+            AiWellnessAssistantCard(
+                title = "Reflexión Compasiva",
+                subtitle = "Reestructuración amable de tus notas.",
+                buttonLabel = "Analizar",
+                state = diaryAiState,
+                onGenerateClick = { viewModel.generateDiaryAiReflection() },
+                accentColor = PurpleAccent,
+                accentBgColor = PurpleLight,
+                testTag = "diary_ai_assistant_card"
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Lista de Notas o Estado Vacío Minimalista
             if (filteredEntries.isEmpty()) {
-                Box(
-                    contentAlignment = Alignment.Center,
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
+                        .clickable { showDialog = true }
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(32.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 28.dp, horizontal = 20.dp)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.MenuBook,
                             contentDescription = null,
                             tint = Color(0xFFCBD5E0),
-                            modifier = Modifier.size(72.dp)
+                            modifier = Modifier.size(40.dp)
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = if (searchQuery.isNotBlank() || selectedCategory != "Todos") {
-                                "No se encontraron notas con el filtro seleccionado."
-                            } else {
-                                "Tu cuaderno de pensamientos está en blanco. Pulsa el botón '+' para registrar tu primera reflexión o pensamiento."
-                            },
-                            fontSize = 14.sp,
+                            text = "Sin notas registradas. Toca 'Escribir' para añadir tu primera reflexión.",
+                            fontSize = 12.sp,
                             color = MutedSlate,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 21.sp
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
             } else {
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     items(filteredEntries, key = { it.id }) { item ->
@@ -269,7 +259,7 @@ fun DiaryScreen(
                         )
                     }
                     item {
-                        Spacer(modifier = Modifier.height(80.dp))
+                        Spacer(modifier = Modifier.height(72.dp))
                     }
                 }
             }
