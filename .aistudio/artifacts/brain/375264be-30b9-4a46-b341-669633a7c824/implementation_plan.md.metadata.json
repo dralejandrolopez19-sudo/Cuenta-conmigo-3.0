@@ -1,0 +1,6 @@
+{
+  "summary":  "Plan de implementación para reparar el flujo completo de inicio de sesión con Google (Credential Manager, resolución segura de Activity, eliminación de condiciones de carrera y reprovisionamiento de huella SHA-1/SHA-256) e incorporar el sistema de Privacidad Inteligente 'Modo Calle' con ocultamiento instantáneo de textos sensibles, botón rápido en la barra superior, detección automática por movimiento/acelerómetro y camuflaje inteligente asistido por IA (Gemini).",
+  "updatedAt":  "2026-10-21T11:25:26.984397199Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

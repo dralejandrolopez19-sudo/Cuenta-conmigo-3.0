@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- Los iconos adaptativos vectoriales están definidos en mipmap-anydpi-v26 -->
+    <issue id="IconLauncherShape" severity="ignore" />
+    
+    <!-- Versiones fijadas para compatibilidad del contenedor de compilación de AI Studio -->
+    <issue id="AndroidGradlePluginVersion" severity="ignore" />
+    <issue id="GradleDependency" severity="ignore" />
+    <issue id="NewerVersionAvailable" severity="ignore" />
+    <issue id="UseKtx" severity="ignore" />
+</lint>

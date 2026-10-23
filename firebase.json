@@ -1,0 +1,8 @@
+{
+  "firestore": [
+    {
+      "database": "ai-studio-android-cuentaco-375264be-30b9-4a46-b341-669633a7c824",
+      "rules": "firestore.rules"
+    }
+  ]
+}

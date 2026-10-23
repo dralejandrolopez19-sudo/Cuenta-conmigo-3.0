@@ -1,0 +1,167 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "displayName"]
+    },
+    "MoodEntry": {
+      "title": "MoodEntry",
+      "description": "Daily mood self-assessment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "level": { "type": "integer" },
+        "levelLabel": { "type": "string" },
+        "feelings": { "type": "array" },
+        "note": { "type": "string" },
+        "date": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "level", "date"]
+    },
+    "JournalEntry": {
+      "title": "JournalEntry",
+      "description": "Cognitive and reflective journal entries",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "content"]
+    },
+    "Medication": {
+      "title": "Medication",
+      "description": "User prescribed medications",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "dosage": { "type": "string" },
+        "scheduledTimes": { "type": "array" },
+        "notes": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "dosage"]
+    },
+    "MedicationLog": {
+      "title": "MedicationLog",
+      "description": "Record of medication doses taken",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "medicationId": { "type": "string" },
+        "medicationName": { "type": "string" },
+        "dosage": { "type": "string" },
+        "date": { "type": "string" },
+        "scheduledTime": { "type": "string" },
+        "takenAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "medicationId", "date"]
+    },
+    "Habit": {
+      "title": "Habit",
+      "description": "Wellness habits and protective routines",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "timeOfDay": { "type": "string" },
+        "streakDays": { "type": "integer" },
+        "completedDates": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name"]
+    },
+    "CalendarEvent": {
+      "title": "CalendarEvent",
+      "description": "Therapy or wellness appointments and events",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "date"]
+    },
+    "ClinicalScaleAssessment": {
+      "title": "ClinicalScaleAssessment",
+      "description": "Standardized psychological evaluation results (PHQ-9, GAD-7, EVA)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "scaleType": { "type": "string" },
+        "scaleName": { "type": "string" },
+        "score": { "type": "integer" },
+        "maxScore": { "type": "integer" },
+        "severityLevel": { "type": "string" },
+        "interpretation": { "type": "string" },
+        "answers": { "type": "array" },
+        "date": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "scaleType", "score", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/profile/{profileId}": {
+      "schema": "UserProfile",
+      "description": "User profile data"
+    },
+    "/users/{userId}/mood_entries/{entryId}": {
+      "schema": "MoodEntry",
+      "description": "User mood logs"
+    },
+    "/users/{userId}/journal_entries/{entryId}": {
+      "schema": "JournalEntry",
+      "description": "User journal entries"
+    },
+    "/users/{userId}/medications/{medicationId}": {
+      "schema": "Medication",
+      "description": "User medication list"
+    },
+    "/users/{userId}/medication_logs/{logId}": {
+      "schema": "MedicationLog",
+      "description": "User medication intake logs"
+    },
+    "/users/{userId}/habits/{habitId}": {
+      "schema": "Habit",
+      "description": "User habits and routines"
+    },
+    "/users/{userId}/calendar_events/{eventId}": {
+      "schema": "CalendarEvent",
+      "description": "User calendar events and appointments"
+    },
+    "/users/{userId}/clinical_assessments/{assessmentId}": {
+      "schema": "ClinicalScaleAssessment",
+      "description": "User clinical scale evaluations and psychological scores"
+    }
+  }
+}

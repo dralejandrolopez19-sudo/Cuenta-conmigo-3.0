@@ -1,0 +1,6 @@
+{
+  "name": "Cuenta Conmigo",
+  "description": "Cuaderno de Bienestar y salud mental para el registro de estado de ánimo, diario cognitivo, hábitos, medicación y agenda.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
