@@ -637,13 +637,11 @@ fun MoodScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // IA compacta al final
+        // IA automática al final
         AiWellnessAssistantCard(
             title = "Análisis Emocional",
-            subtitle = "Patrones e ideas de regulación emocional.",
-            buttonLabel = "Analizar",
+            subtitle = "Patrones e ideas automáticas de regulación emocional.",
             state = moodAiState,
-            onGenerateClick = { viewModel.generateMoodAiAnalysis() },
             accentColor = TealSecondary,
             accentBgColor = TealLight,
             testTag = "mood_ai_assistant_card"

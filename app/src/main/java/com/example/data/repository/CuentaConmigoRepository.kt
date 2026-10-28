@@ -186,13 +186,23 @@ class CuentaConmigoRepository(
 ) {
 
     constructor(context: Context, currentUserId: String = "") : this(
-        FirebaseFirestore.getInstance(
-            context.applicationContext.getString(R.string.firestore_database_id)
-        ),
+        getFirestoreInstance(context),
         currentUserId
     )
 
-    private val auth = Firebase.auth
+    companion object {
+        private fun getFirestoreInstance(context: Context): FirebaseFirestore {
+            val appCtx = context.applicationContext
+            if (com.google.firebase.FirebaseApp.getApps(appCtx).isEmpty()) {
+                com.google.firebase.FirebaseApp.initializeApp(appCtx)
+            }
+            return FirebaseFirestore.getInstance(
+                appCtx.getString(R.string.firestore_database_id)
+            )
+        }
+    }
+
+    private val auth by lazy { Firebase.auth }
 
     fun isGuest(uid: String = currentUserId): Boolean {
         return uid.startsWith("guest_") || (currentUserId.isNotBlank() && currentUserId.startsWith("guest_"))
@@ -382,14 +392,15 @@ class CuentaConmigoRepository(
 
     suspend fun saveMoodEntry(entry: MoodEntry) {
         if (isGuest(entry.userId)) {
-            val id = entry.id.ifBlank { "guest_mood_${UUID.randomUUID().toString().take(8)}" }
+            val existingForDate = InMemoryGuestStore.moodEntries.value.firstOrNull { it.date == entry.date }
+            val id = entry.id.ifBlank { existingForDate?.id ?: "guest_mood_${UUID.randomUUID().toString().take(8)}" }
             val updated = entry.copy(id = id)
-            InMemoryGuestStore.moodEntries.value = listOf(updated) + InMemoryGuestStore.moodEntries.value.filter { it.id != id }
+            InMemoryGuestStore.moodEntries.value = listOf(updated) + InMemoryGuestStore.moodEntries.value.filter { it.id != id && it.date != entry.date }
             return
         }
         val uid = requireUserId()
         val colRef = db.collection("users").document(uid).collection("mood_entries")
-        val docRef = if (entry.id.isNotBlank()) colRef.document(entry.id) else colRef.document()
+        val docRef = colRef.document(entry.id.ifBlank { "mood_${entry.date}" })
         val payload = mapOf(
             "userId" to uid,
             "level" to entry.level,

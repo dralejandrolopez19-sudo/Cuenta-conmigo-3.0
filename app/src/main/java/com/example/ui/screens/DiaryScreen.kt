@@ -201,10 +201,8 @@ fun DiaryScreen(
 
             AiWellnessAssistantCard(
                 title = "Reflexión Compasiva",
-                subtitle = "Reestructuración amable de tus notas.",
-                buttonLabel = "Analizar",
+                subtitle = "Reestructuración amable automática de tus notas.",
                 state = diaryAiState,
-                onGenerateClick = { viewModel.generateDiaryAiReflection() },
                 accentColor = PurpleAccent,
                 accentBgColor = PurpleLight,
                 testTag = "diary_ai_assistant_card"

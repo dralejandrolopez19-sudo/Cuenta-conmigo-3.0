@@ -659,13 +659,11 @@ fun AgendaScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 4. Asistente IA Compacto al pie
+            // 4. Asistente IA Automático al pie
             AiWellnessAssistantCard(
                 title = "Preparador de Cita",
-                subtitle = "Preguntas clave para tu consulta o balance del día.",
-                buttonLabel = "Preparar",
+                subtitle = "Guía automática para tu consulta o balance de la fecha.",
                 state = agendaAiState,
-                onGenerateClick = { viewModel.generateAgendaAiPreparation(selectedDate) },
                 accentColor = PurpleAccent,
                 accentBgColor = PurpleLight,
                 testTag = "agenda_ai_card"

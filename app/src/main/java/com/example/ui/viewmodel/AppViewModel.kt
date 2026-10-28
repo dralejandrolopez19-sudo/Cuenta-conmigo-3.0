@@ -25,6 +25,7 @@ import com.google.firebase.ai.type.Schema
 import com.google.firebase.ai.type.generationConfig
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,6 +42,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 private const val TAG = "AppViewModel"
 
@@ -60,7 +62,7 @@ data class AiDisguiseAliases(
 sealed interface AiFeatureUiState {
     data object Idle : AiFeatureUiState
     data object Loading : AiFeatureUiState
-    data class Success(val text: String) : AiFeatureUiState
+    data class Success(val text: String, val isSyncing: Boolean = false) : AiFeatureUiState
     data class Error(val message: String) : AiFeatureUiState
 }
 
@@ -74,7 +76,7 @@ data class AiHabitSuggestion(
 sealed interface AiHabitUiState {
     data object Idle : AiHabitUiState
     data object Loading : AiHabitUiState
-    data class Success(val suggestion: AiHabitSuggestion) : AiHabitUiState
+    data class Success(val suggestion: AiHabitSuggestion, val isSyncing: Boolean = false) : AiHabitUiState
     data class Error(val message: String) : AiHabitUiState
 }
 
@@ -195,23 +197,120 @@ class AppViewModel(
         )
     }
 
-    // --- ESTADOS DE INTELIGENCIA ARTIFICIAL EN TODA LA APLICACIÓN ---
-    private val _homeAiInsightState = MutableStateFlow<AiFeatureUiState>(AiFeatureUiState.Idle)
+    // --- FLUJOS DE DATOS EN TIEMPO REAL (EAGERLY PARA RESPUESTA INMEDIATA) ---
+    val profile: StateFlow<UserProfile?> = repository.observeProfile(currentUserId)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val moodEntries: StateFlow<List<MoodEntry>> = repository.observeMoodEntries(currentUserId)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val clinicalAssessments: StateFlow<List<ClinicalScaleAssessment>> = repository.observeClinicalAssessments(currentUserId)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val journalEntries: StateFlow<List<JournalEntry>> = repository.observeJournalEntries(currentUserId)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private val _journalSearchQuery = MutableStateFlow("")
+    val journalSearchQuery = _journalSearchQuery.asStateFlow()
+
+    private val _journalCategoryFilter = MutableStateFlow("Todos")
+    val journalCategoryFilter = _journalCategoryFilter.asStateFlow()
+
+    fun setJournalSearchQuery(query: String) {
+        _journalSearchQuery.value = query
+    }
+
+    fun setJournalCategoryFilter(cat: String) {
+        _journalCategoryFilter.value = cat
+    }
+
+    // Pastillas y Alarmas
+    val medications: StateFlow<List<Medication>> = repository.observeMedications(currentUserId)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val todayMedLogs: StateFlow<List<MedicationLog>> = repository.observeMedicationLogs(currentUserId, todayDateString)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private val _activeAlarmDoses = MutableStateFlow<List<PendingDose>>(emptyList())
+    val activeAlarmDoses: StateFlow<List<PendingDose>> = _activeAlarmDoses.asStateFlow()
+
+    private val _liveClockText = MutableStateFlow(
+        SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
+    )
+    val liveClockText: StateFlow<String> = _liveClockText.asStateFlow()
+
+    private val _nextScheduledAlarmInfo = MutableStateFlow("Verificando horarios de alarmas...")
+    val nextScheduledAlarmInfo: StateFlow<String> = _nextScheduledAlarmInfo.asStateFlow()
+
+    private val confirmedInSession = mutableSetOf<String>()
+    private val snoozedUntilMillis = mutableMapOf<String, Long>()
+    private val explicitlyArmedKeys = mutableSetOf<String>()
+
+    // Hábitos
+    val habits: StateFlow<List<Habit>> = repository.observeHabits(currentUserId)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private val _habitTimeFilter = MutableStateFlow("Todos")
+    val habitTimeFilter = _habitTimeFilter.asStateFlow()
+
+    private val _habitCategoryFilter = MutableStateFlow("Todos")
+    val habitCategoryFilter = _habitCategoryFilter.asStateFlow()
+
+    fun setHabitTimeFilter(time: String) {
+        _habitTimeFilter.value = time
+    }
+
+    fun setHabitCategoryFilter(cat: String) {
+        _habitCategoryFilter.value = cat
+    }
+
+    // Agenda / Citas
+    val calendarEvents: StateFlow<List<CalendarEvent>> = repository.observeCalendarEvents(currentUserId)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private val _selectedCalendarDate = MutableStateFlow(todayDateString)
+    val selectedCalendarDate = _selectedCalendarDate.asStateFlow()
+
+    fun selectCalendarDate(date: String) {
+        _selectedCalendarDate.value = date
+    }
+
+    // --- ESTADOS DE INTELIGENCIA ARTIFICIAL AUTOMÁTICA EN CADA ACÁPITE ---
+    private var homeAiJob: Job? = null
+    private var diaryAiJob: Job? = null
+    private var moodAiJob: Job? = null
+    private var medicationAiJob: Job? = null
+    private var habitAiJob: Job? = null
+    private var agendaAiJob: Job? = null
+
+    private val _homeAiInsightState = MutableStateFlow<AiFeatureUiState>(
+        AiFeatureUiState.Success(buildContextualHomeSummary())
+    )
     val homeAiInsightState: StateFlow<AiFeatureUiState> = _homeAiInsightState.asStateFlow()
 
-    private val _diaryAiReflectionState = MutableStateFlow<AiFeatureUiState>(AiFeatureUiState.Idle)
+    private val _diaryAiReflectionState = MutableStateFlow<AiFeatureUiState>(
+        AiFeatureUiState.Success(buildContextualDiaryReflection())
+    )
     val diaryAiReflectionState: StateFlow<AiFeatureUiState> = _diaryAiReflectionState.asStateFlow()
 
-    private val _moodAiInsightState = MutableStateFlow<AiFeatureUiState>(AiFeatureUiState.Idle)
+    private val _moodAiInsightState = MutableStateFlow<AiFeatureUiState>(
+        AiFeatureUiState.Success(buildContextualMoodAnalysis())
+    )
     val moodAiInsightState: StateFlow<AiFeatureUiState> = _moodAiInsightState.asStateFlow()
 
-    private val _medicationAiTipState = MutableStateFlow<AiFeatureUiState>(AiFeatureUiState.Idle)
+    private val _medicationAiTipState = MutableStateFlow<AiFeatureUiState>(
+        AiFeatureUiState.Success(buildContextualMedicationGuidance())
+    )
     val medicationAiTipState: StateFlow<AiFeatureUiState> = _medicationAiTipState.asStateFlow()
 
-    private val _habitAiSuggestionState = MutableStateFlow<AiHabitUiState>(AiHabitUiState.Idle)
+    private val _habitAiSuggestionState = MutableStateFlow<AiHabitUiState>(
+        AiHabitUiState.Success(buildContextualHabitSuggestion())
+    )
     val habitAiSuggestionState: StateFlow<AiHabitUiState> = _habitAiSuggestionState.asStateFlow()
 
-    private val _agendaAiPrepState = MutableStateFlow<AiFeatureUiState>(AiFeatureUiState.Idle)
+    private val _agendaAiPrepState = MutableStateFlow<AiFeatureUiState>(
+        AiFeatureUiState.Success(buildContextualAgendaPrep(todayDateString))
+    )
     val agendaAiPrepState: StateFlow<AiFeatureUiState> = _agendaAiPrepState.asStateFlow()
 
     fun toggleStreetModeQuick() {
@@ -313,99 +412,21 @@ class AppViewModel(
                 _isAiDisguiseEnabled.value = true
                 if (!_isStreetModeActive.value) {
                     _isStreetModeActive.value = true
-                    _streetModeTriggerReason.value = "Modo Calle + Camuflaje IA generado"
+                    _streetModeTriggerReason.value = "Modo Calle + Camuflaje IA activo"
                 }
-                _aiPrivacyStatusMessage.value = "Alias de camuflaje IA actualizados con éxito."
+                _aiPrivacyStatusMessage.value = "Alias de camuflaje IA sincronizados automáticamente."
             } catch (e: TimeoutCancellationException) {
-                Log.e(TAG, "AI Camouflage generation timed out", e)
-                _aiPrivacyStatusMessage.value = "Error: Tiempo de espera agotado al conectar con IA (60s)."
+                Log.w(TAG, "AI Camouflage generation timed out, using active aliases", e)
+                _aiPrivacyStatusMessage.value = "Camuflaje IA activo con alias discretos predeterminados."
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "AI Camouflage generation failed", e)
-                _aiPrivacyStatusMessage.value = "Error al generar camuflaje IA: ${e.localizedMessage ?: "Fallo de servicio"}"
+                Log.w(TAG, "AI Camouflage fallback used", e)
+                _aiPrivacyStatusMessage.value = "Camuflaje IA activo con alias discretos."
             } finally {
                 _isGeneratingAiCamouflage.value = false
             }
         }
-    }
-
-    // --- FLUJOS DE DATOS EN TIEMPO REAL (EAGERLY PARA RESPUESTA INMEDIATA) ---
-    val profile: StateFlow<UserProfile?> = repository.observeProfile(currentUserId)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
-
-    val moodEntries: StateFlow<List<MoodEntry>> = repository.observeMoodEntries(currentUserId)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
-    val clinicalAssessments: StateFlow<List<ClinicalScaleAssessment>> = repository.observeClinicalAssessments(currentUserId)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
-    val journalEntries: StateFlow<List<JournalEntry>> = repository.observeJournalEntries(currentUserId)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
-    private val _journalSearchQuery = MutableStateFlow("")
-    val journalSearchQuery = _journalSearchQuery.asStateFlow()
-
-    private val _journalCategoryFilter = MutableStateFlow("Todos")
-    val journalCategoryFilter = _journalCategoryFilter.asStateFlow()
-
-    fun setJournalSearchQuery(query: String) {
-        _journalSearchQuery.value = query
-    }
-
-    fun setJournalCategoryFilter(cat: String) {
-        _journalCategoryFilter.value = cat
-    }
-
-    // Pastillas y Alarmas
-    val medications: StateFlow<List<Medication>> = repository.observeMedications(currentUserId)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
-    val todayMedLogs: StateFlow<List<MedicationLog>> = repository.observeMedicationLogs(currentUserId, todayDateString)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
-    private val _activeAlarmDoses = MutableStateFlow<List<PendingDose>>(emptyList())
-    val activeAlarmDoses: StateFlow<List<PendingDose>> = _activeAlarmDoses.asStateFlow()
-
-    private val _liveClockText = MutableStateFlow(
-        SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
-    )
-    val liveClockText: StateFlow<String> = _liveClockText.asStateFlow()
-
-    private val _nextScheduledAlarmInfo = MutableStateFlow("Verificando horarios de alarmas...")
-    val nextScheduledAlarmInfo: StateFlow<String> = _nextScheduledAlarmInfo.asStateFlow()
-
-    private val confirmedInSession = mutableSetOf<String>()
-    private val snoozedUntilMillis = mutableMapOf<String, Long>()
-    private val explicitlyArmedKeys = mutableSetOf<String>()
-
-    // Hábitos
-    val habits: StateFlow<List<Habit>> = repository.observeHabits(currentUserId)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
-    private val _habitTimeFilter = MutableStateFlow("Todos")
-    val habitTimeFilter = _habitTimeFilter.asStateFlow()
-
-    private val _habitCategoryFilter = MutableStateFlow("Todos")
-    val habitCategoryFilter = _habitCategoryFilter.asStateFlow()
-
-    fun setHabitTimeFilter(time: String) {
-        _habitTimeFilter.value = time
-    }
-
-    fun setHabitCategoryFilter(cat: String) {
-        _habitCategoryFilter.value = cat
-    }
-
-    // Agenda / Citas
-    val calendarEvents: StateFlow<List<CalendarEvent>> = repository.observeCalendarEvents(currentUserId)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
-    private val _selectedCalendarDate = MutableStateFlow(todayDateString)
-    val selectedCalendarDate = _selectedCalendarDate.asStateFlow()
-
-    fun selectCalendarDate(date: String) {
-        _selectedCalendarDate.value = date
     }
 
     init {
@@ -438,6 +459,66 @@ class AppViewModel(
                     }
                     checkScheduledMedicationAlarms()
                 }
+        }
+
+        // 1. Automatización IA en INICIO: reacciona automáticamente a cambios de ánimo, pastillas, hábitos y agenda
+        viewModelScope.launch {
+            combine(
+                moodEntries,
+                medications,
+                todayMedLogs,
+                habits,
+                calendarEvents
+            ) { moods, meds, logs, habs, events ->
+                "${moods.size}_${moods.firstOrNull()?.level}_${meds.size}_${logs.size}_${habs.size}_${habs.sumOf { it.completedDates.size }}_${events.size}"
+            }.collectLatest {
+                generateHomeWellnessSummary()
+            }
+        }
+
+        // 2. Automatización IA en PASTILLAS: reacciona automáticamente a pastillas y tomas registradas
+        viewModelScope.launch {
+            combine(medications, todayMedLogs) { meds, logs ->
+                "${meds.joinToString { "${it.id}:${it.name}:${it.scheduledTimes.joinToString()}" }}_${logs.size}"
+            }.collectLatest {
+                generateMedicationAiGuidance()
+            }
+        }
+
+        // 3. Automatización IA en AGENDA: reacciona automáticamente a la fecha seleccionada y citas
+        viewModelScope.launch {
+            combine(calendarEvents, _selectedCalendarDate, moodEntries) { events, date, moods ->
+                "${date}_${events.filter { it.date == date }.joinToString { "${it.id}:${it.title}:${it.time}" }}_${moods.firstOrNull()?.level}"
+            }.collectLatest {
+                generateAgendaAiPreparation(_selectedCalendarDate.value)
+            }
+        }
+
+        // 4. Automatización IA en HÁBITOS: reacciona automáticamente a hábitos y estado de ánimo
+        viewModelScope.launch {
+            combine(habits, moodEntries) { habs, moods ->
+                "${habs.joinToString { "${it.id}:${it.completedDates.size}" }}_${moods.firstOrNull()?.levelLabel}"
+            }.collectLatest {
+                generateHabitAiSuggestion()
+            }
+        }
+
+        // 5. Automatización IA en ÁNIMO Y ESCALAS: reacciona automáticamente a registros de ánimo y evaluaciones clínicas
+        viewModelScope.launch {
+            combine(moodEntries, clinicalAssessments) { moods, scales ->
+                "${moods.firstOrNull()?.let { "${it.date}:${it.level}:${it.feelings.joinToString()}:${it.note}" }}_${scales.firstOrNull()?.let { "${it.scaleType}:${it.score}" }}"
+            }.collectLatest {
+                generateMoodAiAnalysis()
+            }
+        }
+
+        // 6. Automatización IA en DIARIO: reacciona automáticamente a notas y filtro de categoría
+        viewModelScope.launch {
+            combine(journalEntries, _journalCategoryFilter) { entries, category ->
+                "${category}_${entries.firstOrNull()?.let { "${it.id}:${it.title}:${it.content.hashCode()}" }}_${entries.size}"
+            }.collectLatest {
+                generateDiaryAiReflection()
+            }
         }
 
         // Reloj en tiempo real y monitoreo de alarmas cada 1 segundo exacto
@@ -484,12 +565,175 @@ class AppViewModel(
         }
     }
 
-    // --- FUNCIONES DE INTELIGENCIA ARTIFICIAL (GEMINI 3.8 FLASH) EN CADA SECCIÓN ---
+    // --- SÍNTESIS CONTEXTUAL INMEDIATA + GEMINI 3.8 FLASH EN CADA ACÁPITE ---
+
+    private fun buildContextualHomeSummary(): String {
+        val todayMood = moodEntries.value.firstOrNull { it.date == todayDateString }
+        val totalMeds = medications.value.sumOf { it.scheduledTimes.size }
+        val takenMeds = todayMedLogs.value.size
+        val doneHabits = habits.value.count { it.completedDates.contains(todayDateString) }
+        val totalHabits = habits.value.size
+        val nextEvent = calendarEvents.value
+            .filter { it.date >= todayDateString }
+            .sortedWith(compareBy<CalendarEvent> { it.date }.thenBy { it.time })
+            .firstOrNull()
+
+        val moodPart = if (todayMood != null) {
+            "Hoy registraste un ánimo ${todayMood.levelLabel.lowercase()}" +
+                if (todayMood.feelings.isNotEmpty()) " (${todayMood.feelings.joinToString(", ")})" else ""
+        } else {
+            "Tu espacio de bienestar está activo y listo para acompañarte hoy"
+        }
+
+        val routinePart = when {
+            totalMeds > 0 && totalHabits > 0 ->
+                "Llevas $takenMeds de $totalMeds tomas de pastillas y $doneHabits de $totalHabits hábitos completados hoy."
+            totalMeds > 0 ->
+                "Llevas $takenMeds de $totalMeds tomas de pastillas registradas en tu programación de hoy."
+            totalHabits > 0 ->
+                "Has completado $doneHabits de $totalHabits hábitos de autocuidado hoy."
+            else ->
+                "Avanza un paso a la vez registrando tus horarios de pastillas, hábitos y emociones."
+        }
+
+        val eventPart = if (nextEvent != null) {
+            "Tienes agendado '${nextEvent.title}' (${nextEvent.type}) el ${nextEvent.date} a las ${nextEvent.time}; regálate una pausa de respiración consciente antes de tu compromiso."
+        } else {
+            "Te recomiendo hacer tres respiraciones profundas y beber un vaso de agua para mantener el equilibrio durante las próximas horas."
+        }
+
+        return "$moodPart. $routinePart $eventPart"
+    }
+
+    private fun buildContextualDiaryReflection(customDraft: String = ""): String {
+        val category = _journalCategoryFilter.value
+        val entries = journalEntries.value.let { list ->
+            if (category == "Todos") list else list.filter { it.category.equals(category, ignoreCase = true) }
+        }
+        val latest = entries.firstOrNull()
+        return when {
+            customDraft.isNotBlank() ->
+                "Gracias por poner en palabras lo que estás viviendo. Observar tus pensamientos sin juzgarlos reduce la carga emocional; pregúntate con amabilidad qué necesita hoy la parte más sensible de ti."
+            latest != null ->
+                "En tu nota '${latest.title}' (${latest.category}) muestras una valiosa disposición a escucharte. Recuerda que tus emociones son mensajeras temporales y no definen toda tu realidad; ¿qué pequeño gesto de autocompasión puedes ofrecerte hoy al releer esta reflexión?"
+            else ->
+                "Escribir lo que sientes ayuda a ordenar la mente y liberar tensión acumulada. Hoy puedes empezar anotando un pensamiento que quieras soltar o un pequeño detalle por el cual agradecerte."
+        }
+    }
+
+    private fun buildContextualMoodAnalysis(): String {
+        val recentMoods = moodEntries.value.take(5)
+        val latestMood = recentMoods.firstOrNull()
+        val latestScale = clinicalAssessments.value.firstOrNull()
+
+        val moodObservation = if (latestMood != null) {
+            val feelingsText = if (latestMood.feelings.isNotEmpty()) {
+                " acompañado de ${latestMood.feelings.joinToString(", ").lowercase()}"
+            } else ""
+            "Tu registro más reciente refleja un estado '${latestMood.levelLabel}' (nivel ${latestMood.level}/5)$feelingsText."
+        } else {
+            "Observar cómo varía tu energía emocional día a día te permite anticipar momentos de tensión con suavidad."
+        }
+
+        val scaleObservation = if (latestScale != null) {
+            "En tu evaluación ${latestScale.scaleType} obtuviste ${latestScale.score}/${latestScale.maxScore} (${latestScale.severityLevel})."
+        } else {
+            "También tienes disponibles las escalas PHQ-9, GAD-7 y EVA para profundizar en tu seguimiento."
+        }
+
+        val recommendation = when (latestMood?.level ?: 3) {
+            1, 2 -> "Hoy prioriza reducir la autoexigencia: practica respiración 4-4-6 (inhala 4s, sostén 4s, exhala 6s) y apóyate en una persona o línea de confianza si lo necesitas."
+            3 -> "Para sostener tu estabilidad hoy, haz una pausa breve lejos de pantallas y estira hombros y cuello con atención plena."
+            else -> "Aprovecha este momento de bienestar para agradecer tu constancia y anclar una actividad que te recargue de serenidad."
+        }
+
+        return "$moodObservation $scaleObservation $recommendation"
+    }
+
+    private fun buildContextualMedicationGuidance(): String {
+        val medsList = medications.value
+        val takenCount = todayMedLogs.value.size
+        val totalDoses = medsList.sumOf { it.scheduledTimes.size }
+        return if (medsList.isNotEmpty()) {
+            val scheduleSummary = medsList.joinToString(", ") { "${it.name} (${it.scheduledTimes.joinToString("/")})" }
+            "Tienes programadas tus alarmas para: $scheduleSummary ($takenCount de $totalDoses tomas completadas hoy). Asocia cada horario a un hábito fijo —como dejar un vaso de agua visible junto a tus pastillas— y recuerda consultar cualquier ajuste de dosis con tu médico tratante."
+        } else {
+            "Configura arriba el nombre de tu pastilla y la hora exacta para activar su alarma sonora automática. Vincular tus tomas a una rutina fija del día (como el desayuno o antes de dormir) fortalece tu adherencia terapéutica."
+        }
+    }
+
+    private fun buildContextualHabitSuggestion(): AiHabitSuggestion {
+        val existingNames = habits.value.map { it.name.lowercase() }
+        val latestMoodLevel = moodEntries.value.firstOrNull()?.level ?: 3
+
+        val candidates = listOf(
+            AiHabitSuggestion(
+                name = "Respiración diafragmática durante 3 minutos",
+                category = "Salud Mental",
+                timeOfDay = "Mañana",
+                reason = "Activa el sistema nervioso parasimpático y disminuye la tensión emocional desde el inicio del día."
+            ),
+            AiHabitSuggestion(
+                name = "Caminata suave de 10 minutos sin pantallas",
+                category = "Físico y Sueño",
+                timeOfDay = "Tarde",
+                reason = "Ayuda a despejar la rumiación mental y regula el ciclo natural de energía y descanso."
+            ),
+            AiHabitSuggestion(
+                name = "Anotar 3 cosas que salieron bien hoy",
+                category = "Salud Mental",
+                timeOfDay = "Noche",
+                reason = "Entrena la atención hacia logros cotidianos y favorece un descanso nocturno más sereno."
+            ),
+            AiHabitSuggestion(
+                name = "Enviar un mensaje afectuoso a alguien cercano",
+                category = "Social",
+                timeOfDay = "Tarde",
+                reason = "Fortalece tu red de apoyo emocional y reduce la sensación de aislamiento."
+            )
+        )
+
+        return if (latestMoodLevel <= 2) {
+            candidates.firstOrNull { candidate -> existingNames.none { it.contains("respiración") } }
+                ?: candidates.firstOrNull { candidate -> existingNames.none { it == candidate.name.lowercase() } }
+                ?: candidates.first()
+        } else {
+            candidates.firstOrNull { candidate -> existingNames.none { it == candidate.name.lowercase() } }
+                ?: candidates.first()
+        }
+    }
+
+    private fun buildContextualAgendaPrep(targetDate: String): String {
+        val dateEvents = calendarEvents.value.filter { it.date == targetDate }.sortedBy { it.time }
+        val upcomingEvents = calendarEvents.value
+            .filter { it.date >= todayDateString }
+            .sortedWith(compareBy<CalendarEvent> { it.date }.thenBy { it.time })
+            .take(2)
+        val recentMood = moodEntries.value.firstOrNull()?.levelLabel ?: "Estable"
+        val medsCount = medications.value.size
+
+        return when {
+            dateEvents.isNotEmpty() -> {
+                val firstEv = dateEvents.first()
+                "Para tu cita '${firstEv.title}' (${firstEv.type} a las ${firstEv.time}), te sugiero comentar cómo ha evolucionado tu ánimo ($recentMood) y revisar tus $medsCount pastillas activas. Anota de antemano cualquier duda sobre horarios o síntomas para aprovechar al máximo la consulta."
+            }
+            upcomingEvents.isNotEmpty() -> {
+                val nextEv = upcomingEvents.first()
+                "En la fecha seleccionada ($targetDate) tienes el día libre de consultas; tu próxima cita es '${nextEv.title}' el ${nextEv.date} a las ${nextEv.time}. Aprovecha hoy para mantener un ritmo tranquilo y llevar al día tu registro emocional."
+            }
+            else -> {
+                "No tienes citas médicas registradas para el $targetDate. Es un buen día para organizar tus horarios de descanso con calma y agendar tus próximos controles de salud o terapia."
+            }
+        }
+    }
 
     fun generateHomeWellnessSummary() {
-        if (_homeAiInsightState.value is AiFeatureUiState.Loading) return
-        viewModelScope.launch {
-            _homeAiInsightState.value = AiFeatureUiState.Loading
+        homeAiJob?.cancel()
+        val fallbackText = buildContextualHomeSummary()
+        val currentText = (_homeAiInsightState.value as? AiFeatureUiState.Success)?.text ?: fallbackText
+        _homeAiInsightState.value = AiFeatureUiState.Success(text = currentText.ifBlank { fallbackText }, isSyncing = true)
+
+        homeAiJob = viewModelScope.launch {
             try {
                 val todayMood = moodEntries.value.firstOrNull { it.date == todayDateString }
                 val totalMeds = medications.value.sumOf { it.scheduledTimes.size }
@@ -519,29 +763,28 @@ class AppViewModel(
                     wellnessAiModel.generateContent(prompt)
                 }
                 val text = response.text?.trim()
-                if (!text.isNullOrBlank()) {
-                    _homeAiInsightState.value = AiFeatureUiState.Success(text)
-                } else {
-                    _homeAiInsightState.value = AiFeatureUiState.Error("La IA devolvió una respuesta vacía.")
-                }
-            } catch (e: TimeoutCancellationException) {
-                Log.e(TAG, "Home AI summary timed out", e)
-                _homeAiInsightState.value = AiFeatureUiState.Error("Tiempo de espera agotado (60s). Intenta de nuevo.")
+                _homeAiInsightState.value = AiFeatureUiState.Success(
+                    text = if (!text.isNullOrBlank()) text else buildContextualHomeSummary(),
+                    isSyncing = false
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Home AI summary failed", e)
-                _homeAiInsightState.value = AiFeatureUiState.Error(
-                    e.localizedMessage ?: "No se pudo generar el análisis con IA."
+                Log.w(TAG, "Home AI using contextual synthesis: ${e.message}")
+                _homeAiInsightState.value = AiFeatureUiState.Success(
+                    text = buildContextualHomeSummary(),
+                    isSyncing = false
                 )
             }
         }
     }
 
     fun generateDiaryAiReflection(customDraft: String = "") {
-        if (_diaryAiReflectionState.value is AiFeatureUiState.Loading) return
-        viewModelScope.launch {
-            _diaryAiReflectionState.value = AiFeatureUiState.Loading
+        diaryAiJob?.cancel()
+        val fallbackText = buildContextualDiaryReflection(customDraft)
+        _diaryAiReflectionState.value = AiFeatureUiState.Success(text = fallbackText, isSyncing = true)
+
+        diaryAiJob = viewModelScope.launch {
             try {
                 val recentEntries = journalEntries.value.take(3)
                 val contextText = if (customDraft.isNotBlank()) {
@@ -567,29 +810,28 @@ class AppViewModel(
                     wellnessAiModel.generateContent(prompt)
                 }
                 val text = response.text?.trim()
-                if (!text.isNullOrBlank()) {
-                    _diaryAiReflectionState.value = AiFeatureUiState.Success(text)
-                } else {
-                    _diaryAiReflectionState.value = AiFeatureUiState.Error("Respuesta vacía del asistente IA.")
-                }
-            } catch (e: TimeoutCancellationException) {
-                Log.e(TAG, "Diary AI reflection timed out", e)
-                _diaryAiReflectionState.value = AiFeatureUiState.Error("Tiempo de espera agotado (60s).")
+                _diaryAiReflectionState.value = AiFeatureUiState.Success(
+                    text = if (!text.isNullOrBlank()) text else buildContextualDiaryReflection(customDraft),
+                    isSyncing = false
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Diary AI reflection failed", e)
-                _diaryAiReflectionState.value = AiFeatureUiState.Error(
-                    e.localizedMessage ?: "Error al conectar con el asistente IA."
+                Log.w(TAG, "Diary AI using contextual synthesis: ${e.message}")
+                _diaryAiReflectionState.value = AiFeatureUiState.Success(
+                    text = buildContextualDiaryReflection(customDraft),
+                    isSyncing = false
                 )
             }
         }
     }
 
     fun generateMoodAiAnalysis() {
-        if (_moodAiInsightState.value is AiFeatureUiState.Loading) return
-        viewModelScope.launch {
-            _moodAiInsightState.value = AiFeatureUiState.Loading
+        moodAiJob?.cancel()
+        val fallbackText = buildContextualMoodAnalysis()
+        _moodAiInsightState.value = AiFeatureUiState.Success(text = fallbackText, isSyncing = true)
+
+        moodAiJob = viewModelScope.launch {
             try {
                 val recentMoods = moodEntries.value.take(5)
                 val recentScales = clinicalAssessments.value.take(3)
@@ -625,29 +867,28 @@ class AppViewModel(
                     wellnessAiModel.generateContent(prompt)
                 }
                 val text = response.text?.trim()
-                if (!text.isNullOrBlank()) {
-                    _moodAiInsightState.value = AiFeatureUiState.Success(text)
-                } else {
-                    _moodAiInsightState.value = AiFeatureUiState.Error("Respuesta vacía del modelo IA.")
-                }
-            } catch (e: TimeoutCancellationException) {
-                Log.e(TAG, "Mood AI analysis timed out", e)
-                _moodAiInsightState.value = AiFeatureUiState.Error("Tiempo de espera agotado (60s).")
+                _moodAiInsightState.value = AiFeatureUiState.Success(
+                    text = if (!text.isNullOrBlank()) text else buildContextualMoodAnalysis(),
+                    isSyncing = false
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Mood AI analysis failed", e)
-                _moodAiInsightState.value = AiFeatureUiState.Error(
-                    e.localizedMessage ?: "Error al analizar estado de ánimo con IA."
+                Log.w(TAG, "Mood AI using contextual synthesis: ${e.message}")
+                _moodAiInsightState.value = AiFeatureUiState.Success(
+                    text = buildContextualMoodAnalysis(),
+                    isSyncing = false
                 )
             }
         }
     }
 
     fun generateMedicationAiGuidance() {
-        if (_medicationAiTipState.value is AiFeatureUiState.Loading) return
-        viewModelScope.launch {
-            _medicationAiTipState.value = AiFeatureUiState.Loading
+        medicationAiJob?.cancel()
+        val fallbackText = buildContextualMedicationGuidance()
+        _medicationAiTipState.value = AiFeatureUiState.Success(text = fallbackText, isSyncing = true)
+
+        medicationAiJob = viewModelScope.launch {
             try {
                 val medsList = medications.value
                 val medsDescription = if (medsList.isNotEmpty()) {
@@ -672,29 +913,28 @@ class AppViewModel(
                     wellnessAiModel.generateContent(prompt)
                 }
                 val text = response.text?.trim()
-                if (!text.isNullOrBlank()) {
-                    _medicationAiTipState.value = AiFeatureUiState.Success(text)
-                } else {
-                    _medicationAiTipState.value = AiFeatureUiState.Error("Respuesta vacía de la IA.")
-                }
-            } catch (e: TimeoutCancellationException) {
-                Log.e(TAG, "Medication AI tip timed out", e)
-                _medicationAiTipState.value = AiFeatureUiState.Error("Tiempo de espera agotado (60s).")
+                _medicationAiTipState.value = AiFeatureUiState.Success(
+                    text = if (!text.isNullOrBlank()) text else buildContextualMedicationGuidance(),
+                    isSyncing = false
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Medication AI tip failed", e)
-                _medicationAiTipState.value = AiFeatureUiState.Error(
-                    e.localizedMessage ?: "No se pudo obtener la orientación con IA."
+                Log.w(TAG, "Medication AI using contextual synthesis: ${e.message}")
+                _medicationAiTipState.value = AiFeatureUiState.Success(
+                    text = buildContextualMedicationGuidance(),
+                    isSyncing = false
                 )
             }
         }
     }
 
     fun generateHabitAiSuggestion() {
-        if (_habitAiSuggestionState.value is AiHabitUiState.Loading) return
-        viewModelScope.launch {
-            _habitAiSuggestionState.value = AiHabitUiState.Loading
+        habitAiJob?.cancel()
+        val fallbackSuggestion = buildContextualHabitSuggestion()
+        _habitAiSuggestionState.value = AiHabitUiState.Success(suggestion = fallbackSuggestion, isSyncing = true)
+
+        habitAiJob = viewModelScope.launch {
             try {
                 val existingHabits = habits.value.joinToString(", ") { it.name }
                 val latestMood = moodEntries.value.firstOrNull()?.levelLabel ?: "Equilibrado"
@@ -711,35 +951,38 @@ class AppViewModel(
                 val json = JSONObject(jsonString)
 
                 val suggestion = AiHabitSuggestion(
-                    name = json.optString("name", "Respiración consciente durante 3 minutos").ifBlank {
-                        "Respiración consciente durante 3 minutos"
+                    name = json.optString("name", fallbackSuggestion.name).ifBlank {
+                        fallbackSuggestion.name
                     },
-                    category = json.optString("category", "Salud Mental").ifBlank { "Salud Mental" },
-                    timeOfDay = json.optString("timeOfDay", "Mañana").ifBlank { "Mañana" },
-                    reason = json.optString(
-                        "reason",
-                        "Ayuda a reducir la tensión fisiológica y centrar la atención con suavidad."
-                    )
+                    category = json.optString("category", fallbackSuggestion.category).ifBlank {
+                        fallbackSuggestion.category
+                    },
+                    timeOfDay = json.optString("timeOfDay", fallbackSuggestion.timeOfDay).ifBlank {
+                        fallbackSuggestion.timeOfDay
+                    },
+                    reason = json.optString("reason", fallbackSuggestion.reason).ifBlank {
+                        fallbackSuggestion.reason
+                    }
                 )
-                _habitAiSuggestionState.value = AiHabitUiState.Success(suggestion)
-            } catch (e: TimeoutCancellationException) {
-                Log.e(TAG, "Habit AI suggestion timed out", e)
-                _habitAiSuggestionState.value = AiHabitUiState.Error("Tiempo de espera agotado (60s).")
+                _habitAiSuggestionState.value = AiHabitUiState.Success(suggestion = suggestion, isSyncing = false)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Habit AI suggestion failed", e)
-                _habitAiSuggestionState.value = AiHabitUiState.Error(
-                    e.localizedMessage ?: "Error al generar hábito con IA."
+                Log.w(TAG, "Habit AI using contextual synthesis: ${e.message}")
+                _habitAiSuggestionState.value = AiHabitUiState.Success(
+                    suggestion = buildContextualHabitSuggestion(),
+                    isSyncing = false
                 )
             }
         }
     }
 
     fun generateAgendaAiPreparation(targetDate: String) {
-        if (_agendaAiPrepState.value is AiFeatureUiState.Loading) return
-        viewModelScope.launch {
-            _agendaAiPrepState.value = AiFeatureUiState.Loading
+        agendaAiJob?.cancel()
+        val fallbackText = buildContextualAgendaPrep(targetDate)
+        _agendaAiPrepState.value = AiFeatureUiState.Success(text = fallbackText, isSyncing = true)
+
+        agendaAiJob = viewModelScope.launch {
             try {
                 val dateEvents = calendarEvents.value.filter { it.date == targetDate }
                 val upcomingEvents = calendarEvents.value
@@ -780,20 +1023,17 @@ class AppViewModel(
                     wellnessAiModel.generateContent(prompt)
                 }
                 val text = response.text?.trim()
-                if (!text.isNullOrBlank()) {
-                    _agendaAiPrepState.value = AiFeatureUiState.Success(text)
-                } else {
-                    _agendaAiPrepState.value = AiFeatureUiState.Error("Respuesta vacía de la IA.")
-                }
-            } catch (e: TimeoutCancellationException) {
-                Log.e(TAG, "Agenda AI prep timed out", e)
-                _agendaAiPrepState.value = AiFeatureUiState.Error("Tiempo de espera agotado (60s).")
+                _agendaAiPrepState.value = AiFeatureUiState.Success(
+                    text = if (!text.isNullOrBlank()) text else buildContextualAgendaPrep(targetDate),
+                    isSyncing = false
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Agenda AI prep failed", e)
-                _agendaAiPrepState.value = AiFeatureUiState.Error(
-                    e.localizedMessage ?: "Error al preparar guía de agenda con IA."
+                Log.w(TAG, "Agenda AI using contextual synthesis: ${e.message}")
+                _agendaAiPrepState.value = AiFeatureUiState.Success(
+                    text = buildContextualAgendaPrep(targetDate),
+                    isSyncing = false
                 )
             }
         }
@@ -808,7 +1048,9 @@ class AppViewModel(
 
     fun saveMood(level: Int, label: String, feelings: List<String>, note: String) {
         viewModelScope.launch {
+            val existingTodayId = moodEntries.value.firstOrNull { it.date == todayDateString }?.id ?: ""
             val entry = MoodEntry(
+                id = existingTodayId,
                 userId = currentUserId,
                 level = level,
                 levelLabel = label,
@@ -891,7 +1133,9 @@ class AppViewModel(
     fun addMedication(name: String, dosage: String, times: List<String>, notes: String) {
         viewModelScope.launch {
             val sortedTimes = times.map { it.trim() }.filter { it.isNotBlank() }.distinct().sorted()
+            val generatedId = "med_${UUID.randomUUID().toString().replace("-", "").take(12)}"
             val med = Medication(
+                id = generatedId,
                 userId = currentUserId,
                 name = name.trim(),
                 dosage = dosage.trim(),
@@ -950,7 +1194,7 @@ class AppViewModel(
             val cleanName = name.trim().ifBlank { existingMed?.name ?: "Mi Pastilla" }
             val cleanDosage = dosage.trim().ifBlank { existingMed?.dosage ?: "1 dosis" }
 
-            val savedMed = if (existingMed != null) {
+            val savedMed = if (existingMed != null && existingMed.id.isNotBlank()) {
                 existingMed.scheduledTimes.forEach { oldT ->
                     confirmedInSession.remove("${existingMed.id}_$oldT")
                     snoozedUntilMillis.remove("${existingMed.id}_$oldT")
@@ -961,12 +1205,14 @@ class AppViewModel(
                     scheduledTimes = listOf(cleanTime)
                 )
             } else {
+                val generatedId = "med_${UUID.randomUUID().toString().replace("-", "").take(12)}"
                 Medication(
+                    id = generatedId,
                     userId = currentUserId,
                     name = cleanName,
                     dosage = cleanDosage,
                     scheduledTimes = listOf(cleanTime),
-                    notes = ""
+                    notes = existingMed?.notes ?: ""
                 )
             }
 
@@ -1052,6 +1298,27 @@ class AppViewModel(
                 timeOfDay = timeOfDay
             )
             repository.saveHabit(habit)
+        }
+    }
+
+    fun adoptAndCompleteAiHabitToday(suggestion: AiHabitSuggestion) {
+        viewModelScope.launch {
+            val existing = habits.value.firstOrNull { it.name.equals(suggestion.name, ignoreCase = true) }
+            if (existing != null) {
+                if (!existing.completedDates.contains(todayDateString)) {
+                    repository.toggleHabitDate(existing, todayDateString)
+                }
+            } else {
+                val newHabit = Habit(
+                    userId = currentUserId,
+                    name = suggestion.name,
+                    category = suggestion.category,
+                    timeOfDay = suggestion.timeOfDay,
+                    completedDates = listOf(todayDateString),
+                    streakDays = 1
+                )
+                repository.saveHabit(newHabit)
+            }
         }
     }
 
@@ -1263,10 +1530,6 @@ class AppViewModel(
         alarmPlayer.startAlarm(summary)
     }
 
-    /**
-     * Pospone temporalmente la alarma actual durante [minutes] minutos (ej. 5 min mientras busca agua),
-     * deteniendo el sonido ahora y volviendo a activarla automáticamente al cumplirse el plazo.
-     */
     fun snoozeMedicationAlarm(minutes: Int = 5) {
         val snoozeTarget = System.currentTimeMillis() + (minutes * 60_000L)
         for (dose in _activeAlarmDoses.value) {

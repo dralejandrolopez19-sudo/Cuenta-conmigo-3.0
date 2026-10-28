@@ -732,13 +732,11 @@ fun MedicationScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 4. Orientación IA Compacta al pie
+        // 4. Orientación IA Automática al pie
         AiWellnessAssistantCard(
             title = "Orientación de Tomas",
-            subtitle = "Consejos breves para tus horarios.",
-            buttonLabel = "Consejo",
+            subtitle = "Consejos automáticos según tus horarios programados.",
             state = medicationAiState,
-            onGenerateClick = { viewModel.generateMedicationAiGuidance() },
             accentColor = TealSecondary,
             accentBgColor = TealLight,
             testTag = "medication_ai_card"

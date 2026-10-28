@@ -557,48 +557,44 @@ fun StreetPrivacySettingsDialog(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Button(
-                            onClick = onGenerateAiCamouflageNow,
-                            enabled = !isGeneratingAi,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6D28D9)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("generate_ai_camouflage_btn")
-                        ) {
-                            if (isGeneratingAi) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Generando camuflaje con IA...", fontSize = 12.sp)
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Actualizar alias discretos con IA",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                        if (isGeneratingAi || !aiStatusMessage.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color.White.copy(alpha = 0.7f), RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                            ) {
+                                if (isGeneratingAi) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        color = Color(0xFF6D28D9),
+                                        strokeWidth = 1.8.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Sincronizando alias discretos con IA...",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF5B21B6),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                } else if (!aiStatusMessage.isNullOrBlank()) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        tint = Color(0xFF6D28D9),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = aiStatusMessage,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF5B21B6),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
                             }
-                        }
-
-                        if (!aiStatusMessage.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = aiStatusMessage,
-                                fontSize = 11.sp,
-                                color = if (aiStatusMessage.startsWith("Error")) CoralPrimary else Color(0xFF5B21B6),
-                                fontWeight = FontWeight.Medium
-                            )
                         }
                     }
                 }

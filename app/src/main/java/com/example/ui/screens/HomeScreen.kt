@@ -349,13 +349,11 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Asistente IA Compacto
+        // Asistente IA Automático
         AiWellnessAssistantCard(
             title = "Guía de Hoy",
-            subtitle = "Balance breve de tu día con IA.",
-            buttonLabel = "Guía IA",
+            subtitle = "Balance automático de tu día con IA.",
             state = homeAiState,
-            onGenerateClick = { viewModel.generateHomeWellnessSummary() },
             accentColor = PurpleAccent,
             accentBgColor = PurpleLight,
             testTag = "home_ai_assistant_card"

@@ -27,12 +27,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.credentials.CredentialManager
 import com.example.data.repository.CuentaConmigoRepository
 import com.example.ui.components.CuentaConmigoBottomBar
 import com.example.ui.components.CuentaConmigoTopBar
 import com.example.ui.components.PrivacyShieldBanner
+import com.example.ui.components.ProactiveSupportCard
 import com.example.ui.components.StreetPrivacySettingsDialog
 import com.example.ui.components.attemptAutoSignIn
 import com.example.ui.components.findActivity
@@ -204,6 +206,7 @@ fun AppMainContent(
     }
 
     val showCrisisSupport by viewModel.showCrisisSupportDialog.collectAsState()
+    val proactiveSupport by viewModel.activeProactiveSupport.collectAsState()
 
     // Manejo de botón atrás para volver a Inicio si está en otra pestaña
     BackHandler(enabled = currentTab != AppTab.INICIO) {
@@ -230,6 +233,18 @@ fun AppMainContent(
                     isGeneratingAi = isGeneratingAiCamouflage,
                     onOpenSettings = { viewModel.openStreetPrivacyDialog() },
                     onDisableStreetMode = { viewModel.setStreetMode(false) }
+                )
+                ProactiveSupportCard(
+                    visible = proactiveSupport?.hasImbalance == true,
+                    reasonMessage = proactiveSupport?.triggerReason?.ifBlank {
+                        "Notamos que estás atravesando un momento difícil. No tienes que pasarlo a solas."
+                    } ?: "Notamos que estás atravesando un momento difícil. No tienes que pasarlo a solas.",
+                    onDismiss = { viewModel.dismissProactiveSupport() },
+                    onOpenHelplines = {
+                        viewModel.dismissProactiveSupport()
+                        viewModel.openCrisisSupport()
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                 )
             }
         },
