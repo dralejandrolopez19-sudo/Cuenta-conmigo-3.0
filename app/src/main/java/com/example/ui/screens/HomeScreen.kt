@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,9 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -187,13 +184,16 @@ fun HomeScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        // Cabecera Minimalista con Imagen Sereno
+        // Cabecera Minimalista con Imagen Sereno y Frase del Día
         Card(
             shape = RoundedCornerShape(20.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(140.dp)
+                .clickable {
+                    quoteOffset = (quoteOffset + 1) % compassionateQuotes.size
+                }
                 .testTag("home_header_banner")
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -210,8 +210,8 @@ fun HomeScreen(
                         .background(
                             Brush.verticalGradient(
                                 colors = listOf(
-                                    Color.Black.copy(alpha = 0.05f),
-                                    Color.Black.copy(alpha = 0.6f)
+                                    Color.Black.copy(alpha = 0.08f),
+                                    Color.Black.copy(alpha = 0.65f)
                                 )
                             )
                         )
@@ -227,12 +227,18 @@ fun HomeScreen(
                         text = "Hola, $displayName",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Un paso a la vez.",
-                        fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.9f)
+                        text = compassionateQuotes[currentQuoteIndex],
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                        color = Color.White.copy(alpha = 0.92f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -303,56 +309,10 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Pensamiento Compasivo Minimalista
-        Card(
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    quoteOffset = (quoteOffset + 1) % compassionateQuotes.size
-                }
-                .testTag("compassionate_thought_card")
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(14.dp)
-            ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(CoralLight)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Spa,
-                        contentDescription = "Compasión",
-                        tint = CoralPrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "\"${compassionateQuotes[currentQuoteIndex]}\"",
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp,
-                        color = CharcoalText
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Asistente IA Automático
+        // Guía de hoy compacta e integrada en segundo plano
         AiWellnessAssistantCard(
-            title = "Guía de Hoy",
-            subtitle = "Balance automático de tu día con IA.",
+            title = "Guía de hoy",
+            subtitle = "Balance de tu progreso y bienestar del día.",
             state = homeAiState,
             accentColor = PurpleAccent,
             accentBgColor = PurpleLight,

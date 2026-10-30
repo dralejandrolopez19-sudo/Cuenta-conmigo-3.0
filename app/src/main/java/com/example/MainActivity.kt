@@ -36,6 +36,7 @@ import com.example.ui.components.CuentaConmigoTopBar
 import com.example.ui.components.PrivacyShieldBanner
 import com.example.ui.components.ProactiveSupportCard
 import com.example.ui.components.StreetPrivacySettingsDialog
+import com.example.ui.components.WarmReadingSettingsDialog
 import com.example.ui.components.attemptAutoSignIn
 import com.example.ui.components.findActivity
 import com.example.ui.components.signOutUser
@@ -112,7 +113,6 @@ fun MainAppRoot() {
             initialStreetMode = false,
             onSignOut = {
                 signOutUser(
-                    context = context,
                     credentialManager = credentialManager,
                     onSignOutComplete = {
                         currentUser = null
@@ -165,10 +165,16 @@ fun AppMainContent(
     val isStreetModeActive by viewModel.isStreetModeActive.collectAsState()
     val streetModeTriggerReason by viewModel.streetModeTriggerReason.collectAsState()
     val autoMotionPrivacyEnabled by viewModel.autoMotionPrivacyEnabled.collectAsState()
-    val isAiDisguiseEnabled by viewModel.isAiDisguiseEnabled.collectAsState()
-    val isGeneratingAiCamouflage by viewModel.isGeneratingAiCamouflage.collectAsState()
-    val aiPrivacyStatusMessage by viewModel.aiPrivacyStatusMessage.collectAsState()
     val showStreetPrivacyDialog by viewModel.showStreetPrivacyDialog.collectAsState()
+
+    // Modo de lectura cálido y brillo reducido para Diario y Agenda
+    val isReadingModeActive by viewModel.isReadingModeActive.collectAsState()
+    val isReadingModeAutoByTime by viewModel.isReadingModeAutoByTime.collectAsState()
+    val readingStartHour by viewModel.readingAutoStartHour.collectAsState()
+    val readingEndHour by viewModel.readingAutoEndHour.collectAsState()
+    val readingDimLevel by viewModel.readingDimLevel.collectAsState()
+    val readingWarmthLevel by viewModel.readingWarmthLevel.collectAsState()
+    val showReadingModeDialog by viewModel.showReadingModeDialog.collectAsState()
 
     var showEditProfileDialog by remember { mutableStateOf(false) }
 
@@ -184,6 +190,21 @@ fun AppMainContent(
             } else {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
             }
+        }
+    }
+
+    // Reducir automáticamente el brillo de la ventana en Diario y Agenda cuando el Modo Lectura está activo
+    val isReadingScreen = currentTab == AppTab.DIARIO || currentTab == AppTab.AGENDA
+    LaunchedEffect(isReadingScreen, isReadingModeActive, readingDimLevel) {
+        val window = context.findActivity()?.window
+        if (window != null) {
+            val layoutParams = window.attributes
+            layoutParams.screenBrightness = if (isReadingScreen && isReadingModeActive) {
+                (1.0f - readingDimLevel).coerceIn(0.18f, 0.88f)
+            } else {
+                WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            }
+            window.attributes = layoutParams
         }
     }
 
@@ -229,8 +250,6 @@ fun AppMainContent(
                 PrivacyShieldBanner(
                     isStreetModeActive = isStreetModeActive,
                     triggerReason = streetModeTriggerReason,
-                    isAiDisguiseEnabled = isAiDisguiseEnabled,
-                    isGeneratingAi = isGeneratingAiCamouflage,
                     onOpenSettings = { viewModel.openStreetPrivacyDialog() },
                     onDisableStreetMode = { viewModel.setStreetMode(false) }
                 )
@@ -278,10 +297,7 @@ fun AppMainContent(
         StreetPrivacySettingsDialog(
             isStreetModeActive = isStreetModeActive,
             autoMotionEnabled = autoMotionPrivacyEnabled,
-            isAiDisguiseEnabled = isAiDisguiseEnabled,
             isSensorAvailable = viewModel.isMotionSensorAvailable,
-            isGeneratingAi = isGeneratingAiCamouflage,
-            aiStatusMessage = aiPrivacyStatusMessage,
             onToggleStreetMode = { enabled ->
                 viewModel.setStreetMode(
                     enabled = enabled,
@@ -289,8 +305,6 @@ fun AppMainContent(
                 )
             },
             onToggleAutoMotion = { viewModel.setAutoMotionPrivacy(it) },
-            onToggleAiDisguise = { viewModel.setAiDisguiseEnabled(it) },
-            onGenerateAiCamouflageNow = { viewModel.generateAiCamouflageAliases() },
             onSimulateStreetMotion = { viewModel.simulateStreetMotionTrigger() },
             onDismiss = { viewModel.closeStreetPrivacyDialog() }
         )
@@ -317,19 +331,35 @@ fun AppMainContent(
         )
     }
 
-    // ALARMA PERSISTENTE DE MEDICACIÓN
+    // ALARMA DE MEDICACIÓN
     if (activeAlarmDoses.isNotEmpty()) {
         PersistentMedicationAlarmDialog(
             pendingDoses = activeAlarmDoses,
-            onConfirmDose = { dose ->
-                viewModel.confirmDoseInAlarm(dose)
-            },
             onConfirmAllDoses = {
                 viewModel.confirmAllAlarmDoses()
             },
-            onSnoozeAlarm = {
-                viewModel.snoozeMedicationAlarm(5)
+            onDismissAlarm = {
+                viewModel.dismissActiveAlarm()
             }
+        )
+    }
+
+    // CONFIGURACIÓN DEL MODO DE LECTURA CÁLIDO (DIARIO Y AGENDA)
+    if (showReadingModeDialog) {
+        WarmReadingSettingsDialog(
+            isReadingModeActive = isReadingModeActive,
+            isAutoByTime = isReadingModeAutoByTime,
+            startHour = readingStartHour,
+            endHour = readingEndHour,
+            dimLevel = readingDimLevel,
+            warmthLevel = readingWarmthLevel,
+            currentHour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY),
+            onToggleReadingMode = { viewModel.setReadingModeEnabled(it) },
+            onToggleAutoByTime = { viewModel.setReadingModeAutoByTime(it) },
+            onUpdateSchedule = { start, end -> viewModel.updateReadingSchedule(start, end) },
+            onUpdateDimLevel = { viewModel.setReadingDimLevel(it) },
+            onUpdateWarmthLevel = { viewModel.setReadingWarmthLevel(it) },
+            onDismiss = { viewModel.closeReadingModeDialog() }
         )
     }
 }

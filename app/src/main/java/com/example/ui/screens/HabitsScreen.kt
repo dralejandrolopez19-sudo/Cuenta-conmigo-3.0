@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -21,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Spa
 import androidx.compose.material3.AlertDialog
@@ -183,7 +183,7 @@ fun HabitsScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Marca el micro-hábito recomendado por IA abajo o añade uno propio.",
+                            text = "Marca el hábito sugerido abajo o añade uno propio.",
                             fontSize = 12.sp,
                             color = MutedSlate,
                             textAlign = TextAlign.Center
@@ -267,181 +267,103 @@ fun HabitsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Micro-Hábito con IA Automático (sin botones de activación)
-            val isHabitAiSyncing = habitAiState is AiHabitUiState.Loading ||
-                (habitAiState is AiHabitUiState.Success && (habitAiState as AiHabitUiState.Success).isSyncing)
-
+            // Sugerencia de hábito compacta en una sola fila (sin cajas anidadas)
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                border = BorderStroke(0.8.dp, TealSecondary.copy(alpha = 0.16f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("habit_ai_suggestion_card")
             ) {
-                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                when (val state = habitAiState) {
+                    is AiHabitUiState.Success -> {
+                        val suggestion = state.suggestion
+                        val isAlreadyAdoptedToday = habits.any {
+                            it.name.equals(suggestion.name, ignoreCase = true) &&
+                                it.completedDates.contains(todayStr)
+                        }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.adoptAndCompleteAiHabitToday(suggestion)
+                                }
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                                .testTag("habit_ai_suggestion_content")
                         ) {
+                            Checkbox(
+                                checked = isAlreadyAdoptedToday,
+                                onCheckedChange = {
+                                    viewModel.adoptAndCompleteAiHabitToday(suggestion)
+                                },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = TealSecondary,
+                                    checkmarkColor = Color.White
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Sugerencia de hoy • ${suggestion.timeOfDay}",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TealSecondary
+                                )
+                                Text(
+                                    text = suggestion.name,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = CharcoalText
+                                )
+                            }
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .size(26.dp)
                                     .clip(CircleShape)
-                                    .background(TealLight)
+                                    .background(TealLight.copy(alpha = 0.6f))
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = "IA de Hábitos",
+                                    imageVector = Icons.Default.Spa,
+                                    contentDescription = null,
                                     tint = TealSecondary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "Micro-Hábito Recomendado",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = CharcoalText
-                                )
-                                Text(
-                                    text = "Adaptado automáticamente a tu ánimo y rutina de hoy.",
-                                    fontSize = 11.sp,
-                                    color = MutedSlate,
-                                    lineHeight = 14.sp
-                                )
-                            }
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = TealSecondary.copy(alpha = 0.12f)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                if (isHabitAiSyncing) {
-                                    CircularProgressIndicator(
-                                        color = TealSecondary,
-                                        strokeWidth = 1.6.dp,
-                                        modifier = Modifier.size(10.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Default.AutoAwesome,
-                                        contentDescription = null,
-                                        tint = TealSecondary,
-                                        modifier = Modifier.size(11.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                }
-                                Text(
-                                    text = "IA Activa",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TealSecondary
+                                    modifier = Modifier.size(13.dp)
                                 )
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    when (val state = habitAiState) {
-                        is AiHabitUiState.Success -> {
-                            val suggestion = state.suggestion
-                            val isAlreadyAdoptedToday = habits.any {
-                                it.name.equals(suggestion.name, ignoreCase = true) &&
-                                    it.completedDates.contains(todayStr)
-                            }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(TealLight.copy(alpha = 0.35f))
-                                    .clickable {
-                                        viewModel.adoptAndCompleteAiHabitToday(suggestion)
-                                    }
-                                    .padding(horizontal = 10.dp, vertical = 10.dp)
-                                    .testTag("habit_ai_suggestion_content")
-                            ) {
-                                Checkbox(
-                                    checked = isAlreadyAdoptedToday,
-                                    onCheckedChange = {
-                                        viewModel.adoptAndCompleteAiHabitToday(suggestion)
-                                    },
-                                    colors = CheckboxDefaults.colors(
-                                        checkedColor = TealSecondary,
-                                        checkmarkColor = Color.White
-                                    )
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "✨ ${suggestion.name}",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = CharcoalText
-                                    )
-                                    Text(
-                                        text = "${suggestion.category} • ${suggestion.timeOfDay}",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = TealSecondary
-                                    )
-                                    if (suggestion.reason.isNotBlank()) {
-                                        Spacer(modifier = Modifier.height(3.dp))
-                                        Text(
-                                            text = suggestion.reason,
-                                            fontSize = 11.sp,
-                                            color = CharcoalText,
-                                            lineHeight = 15.sp
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        is AiHabitUiState.Loading, AiHabitUiState.Idle -> {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(TealLight.copy(alpha = 0.4f))
-                                    .padding(10.dp)
-                            ) {
-                                CircularProgressIndicator(
-                                    color = TealSecondary,
-                                    strokeWidth = 2.dp,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Sincronizando micro-hábito con tu rutina...",
-                                    fontSize = 11.sp,
-                                    color = CharcoalText
-                                )
-                            }
-                        }
-                        is AiHabitUiState.Error -> {
+                    is AiHabitUiState.Loading, AiHabitUiState.Idle -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                color = TealSecondary,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = state.message,
+                                text = "Preparando sugerencia para tu rutina...",
                                 fontSize = 11.sp,
-                                color = CharcoalText
+                                color = MutedSlate
                             )
                         }
+                    }
+                    is AiHabitUiState.Error -> {
+                        Text(
+                            text = state.message,
+                            fontSize = 11.sp,
+                            color = CharcoalText,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                        )
                     }
                 }
             }

@@ -71,6 +71,10 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.CalendarEvent
 import com.example.ui.components.AiWellnessAssistantCard
 import com.example.ui.components.PrivacyProtectedText
+import com.example.ui.components.WarmReadingHeaderToggle
+import com.example.ui.components.WarmReadingPalette
+import com.example.ui.components.WarmReadingScreenOverlay
+import com.example.ui.components.WarmReadingStatusBar
 import com.example.ui.theme.CharcoalText
 import com.example.ui.theme.CoralLight
 import com.example.ui.theme.CoralPrimary
@@ -126,6 +130,14 @@ fun AgendaScreen(
     val aiAliases by viewModel.aiDisguiseAliases.collectAsState()
     val revealedIds by viewModel.temporarilyRevealedIds.collectAsState()
 
+    // Modo de lectura cálido y brillo reducido
+    val isReadingModeActive by viewModel.isReadingModeActive.collectAsState()
+    val isReadingModeAutoByTime by viewModel.isReadingModeAutoByTime.collectAsState()
+    val readingStartHour by viewModel.readingAutoStartHour.collectAsState()
+    val readingEndHour by viewModel.readingAutoEndHour.collectAsState()
+    val readingDimLevel by viewModel.readingDimLevel.collectAsState()
+    val readingWarmthLevel by viewModel.readingWarmthLevel.collectAsState()
+
     var showAddEventDialog by remember { mutableStateOf(false) }
     var editingEvent by remember { mutableStateOf<CalendarEvent?>(null) }
 
@@ -177,10 +189,18 @@ fun AgendaScreen(
 
     val hasDayRecords = dayEvents.isNotEmpty() || dayMood != null || dayJournals.isNotEmpty()
 
+    val screenBgColor = if (isReadingModeActive) WarmReadingPalette.PaperBackground else SoftCreamBackground
+    val cardBgColor = if (isReadingModeActive) WarmReadingPalette.CardBackground else Color.White
+    val primaryTextColor = if (isReadingModeActive) WarmReadingPalette.InkPrimary else CharcoalText
+    val secondaryTextColor = if (isReadingModeActive) WarmReadingPalette.InkSecondary else MutedSlate
+    val accentColor = if (isReadingModeActive) WarmReadingPalette.AmberAccent else TealSecondary
+    val accentSoftBg = if (isReadingModeActive) WarmReadingPalette.AmberSoft else TealLight
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(SoftCreamBackground)
+            .background(screenBgColor)
+            .testTag(if (isReadingModeActive) "agenda_screen_warm_reading" else "agenda_screen_normal")
     ) {
         Column(
             modifier = Modifier
@@ -188,7 +208,7 @@ fun AgendaScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            // 1. Cabecera Minimalista
+            // 1. Cabecera Minimalista con Modo de Lectura Cálido
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -198,21 +218,29 @@ fun AgendaScreen(
                     text = "Agenda",
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = CharcoalText,
+                    color = primaryTextColor,
                     letterSpacing = (-0.4).sp,
                     modifier = Modifier.testTag("agenda_header_title")
                 )
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    WarmReadingHeaderToggle(
+                        isReadingModeActive = isReadingModeActive,
+                        isAutoByTime = isReadingModeAutoByTime,
+                        onToggleReadingMode = { viewModel.toggleReadingMode() },
+                        onOpenSettings = { viewModel.openReadingModeDialog() },
+                        tagPrefix = "agenda_reading_mode"
+                    )
+
                     if (selectedDate != viewModel.todayDateString) {
                         OutlinedButton(
                             onClick = { viewModel.selectCalendarDate(viewModel.todayDateString) },
                             shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, TealSecondary.copy(alpha = 0.5f)),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = TealSecondary),
+                            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                             modifier = Modifier
                                 .defaultMinSize(minWidth = 1.dp, minHeight = 32.dp)
@@ -229,7 +257,7 @@ fun AgendaScreen(
                             showAddEventDialog = true
                         },
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = TealSecondary),
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                         modifier = Modifier
                             .defaultMinSize(minWidth = 1.dp, minHeight = 32.dp)
@@ -247,13 +275,26 @@ fun AgendaScreen(
                 }
             }
 
+            WarmReadingStatusBar(
+                isReadingModeActive = isReadingModeActive,
+                isAutoByTime = isReadingModeAutoByTime,
+                startHour = readingStartHour,
+                endHour = readingEndHour,
+                dimLevel = readingDimLevel,
+                warmthLevel = readingWarmthLevel,
+                onOpenSettings = { viewModel.openReadingModeDialog() },
+                modifier = Modifier.padding(top = 8.dp),
+                tagPrefix = "agenda_reading_mode"
+            )
+
             Spacer(modifier = Modifier.height(12.dp))
 
             // 2. Calendario Mensual Minimalista
             Card(
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
+                colors = CardDefaults.cardColors(containerColor = cardBgColor),
+                border = if (isReadingModeActive) BorderStroke(1.dp, WarmReadingPalette.BorderColor) else null,
+                elevation = CardDefaults.cardElevation(defaultElevation = if (isReadingModeActive) 0.dp else 1.5.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("calendar_card")
@@ -280,7 +321,7 @@ fun AgendaScreen(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Mes anterior",
-                                tint = CharcoalText,
+                                tint = primaryTextColor,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -289,7 +330,7 @@ fun AgendaScreen(
                             text = monthName,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            color = CharcoalText
+                            color = primaryTextColor
                         )
 
                         IconButton(
@@ -308,7 +349,7 @@ fun AgendaScreen(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                                 contentDescription = "Mes siguiente",
-                                tint = CharcoalText,
+                                tint = primaryTextColor,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -326,7 +367,7 @@ fun AgendaScreen(
                                 text = dayLabel,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = MutedSlate,
+                                color = secondaryTextColor,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.width(34.dp)
                             )
@@ -370,14 +411,14 @@ fun AgendaScreen(
                                             .clip(CircleShape)
                                             .background(
                                                 when {
-                                                    isSelected -> TealSecondary
-                                                    isToday -> TealLight
+                                                    isSelected -> accentColor
+                                                    isToday -> accentSoftBg
                                                     else -> Color.Transparent
                                                 }
                                             )
                                             .then(
                                                 if (isToday && !isSelected) {
-                                                    Modifier.border(1.dp, TealSecondary, CircleShape)
+                                                    Modifier.border(1.dp, accentColor, CircleShape)
                                                 } else {
                                                     Modifier
                                                 }
@@ -390,7 +431,7 @@ fun AgendaScreen(
                                                 text = "$dayNumber",
                                                 fontSize = 12.sp,
                                                 fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected) Color.White else CharcoalText
+                                                color = if (isSelected) Color.White else primaryTextColor
                                             )
 
                                             if (hasEvent || hasMood) {
@@ -401,7 +442,7 @@ fun AgendaScreen(
                                                         .background(
                                                             when {
                                                                 isSelected -> Color.White
-                                                                hasEvent -> TealSecondary
+                                                                hasEvent -> accentColor
                                                                 else -> CoralPrimary
                                                             }
                                                         )
@@ -425,14 +466,15 @@ fun AgendaScreen(
                 text = formatReadableSpanishDate(selectedDate),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = CharcoalText,
+                color = primaryTextColor,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
 
             if (!hasDayRecords) {
                 Card(
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = cardBgColor),
+                    border = if (isReadingModeActive) BorderStroke(1.dp, WarmReadingPalette.BorderColor) else null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
@@ -451,21 +493,21 @@ fun AgendaScreen(
                             Icon(
                                 imageVector = Icons.Default.EventAvailable,
                                 contentDescription = null,
-                                tint = MutedSlate.copy(alpha = 0.6f),
+                                tint = secondaryTextColor.copy(alpha = 0.6f),
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
                                 text = "Sin citas en esta fecha",
                                 fontSize = 13.sp,
-                                color = MutedSlate
+                                color = secondaryTextColor
                             )
                         }
                         Text(
                             text = "+ Añadir cita",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = TealSecondary
+                            color = accentColor
                         )
                     }
                 }
@@ -475,11 +517,12 @@ fun AgendaScreen(
                         val eventItemId = "agenda_${ev.id}"
                         val isEventRevealed = revealedIds.contains(eventItemId)
                         val catOption = eventCategories.firstOrNull { ev.type.contains(it.label, ignoreCase = true) }
-                            ?: EventCategoryOption(ev.type.ifBlank { "Cita" }, Icons.Default.CalendarMonth, TealSecondary, TealLight)
+                            ?: EventCategoryOption(ev.type.ifBlank { "Cita" }, Icons.Default.CalendarMonth, accentColor, accentSoftBg)
 
                         Card(
                             shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = cardBgColor),
+                            border = if (isReadingModeActive) BorderStroke(1.dp, WarmReadingPalette.BorderColor) else null,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
@@ -516,7 +559,7 @@ fun AgendaScreen(
                                         onRevealClick = { viewModel.revealPrivacyItemTemporarily(eventItemId) },
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp,
-                                        color = CharcoalText
+                                        color = primaryTextColor
                                     )
                                     if (ev.notes.isNotBlank()) {
                                         PrivacyProtectedText(
@@ -528,7 +571,7 @@ fun AgendaScreen(
                                             aiDisguiseText = "Nota privada",
                                             onRevealClick = { viewModel.revealPrivacyItemTemporarily(eventItemId) },
                                             fontSize = 11.sp,
-                                            color = MutedSlate,
+                                            color = secondaryTextColor,
                                             maxLines = 1
                                         )
                                     }
@@ -561,7 +604,7 @@ fun AgendaScreen(
                                     Icon(
                                         imageVector = Icons.Default.Edit,
                                         contentDescription = "Editar cita",
-                                        tint = TealSecondary,
+                                        tint = accentColor,
                                         modifier = Modifier.size(17.dp)
                                     )
                                 }
@@ -573,7 +616,7 @@ fun AgendaScreen(
                                     Icon(
                                         imageVector = Icons.Default.DeleteOutline,
                                         contentDescription = "Eliminar cita",
-                                        tint = MutedSlate.copy(alpha = 0.6f),
+                                        tint = secondaryTextColor.copy(alpha = 0.6f),
                                         modifier = Modifier.size(17.dp)
                                     )
                                 }
@@ -586,7 +629,8 @@ fun AgendaScreen(
                         val isDayMoodRevealed = revealedIds.contains(dayMoodItemId)
                         Card(
                             shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = cardBgColor),
+                            border = if (isReadingModeActive) BorderStroke(1.dp, WarmReadingPalette.BorderColor) else null,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { viewModel.selectTab(AppTab.ANIMO) }
@@ -612,7 +656,7 @@ fun AgendaScreen(
                                     onRevealClick = { viewModel.revealPrivacyItemTemporarily(dayMoodItemId) },
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 13.sp,
-                                    color = CharcoalText
+                                    color = primaryTextColor
                                 )
                             }
                         }
@@ -623,7 +667,8 @@ fun AgendaScreen(
                         val isDayJournalRevealed = revealedIds.contains(dayJournalId)
                         Card(
                             shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = cardBgColor),
+                            border = if (isReadingModeActive) BorderStroke(1.dp, WarmReadingPalette.BorderColor) else null,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { viewModel.selectTab(AppTab.DIARIO) }
@@ -635,7 +680,7 @@ fun AgendaScreen(
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.MenuBook,
                                     contentDescription = null,
-                                    tint = PurpleAccent,
+                                    tint = if (isReadingModeActive) WarmReadingPalette.AmberAccent else PurpleAccent,
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -649,7 +694,7 @@ fun AgendaScreen(
                                     onRevealClick = { viewModel.revealPrivacyItemTemporarily(dayJournalId) },
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 13.sp,
-                                    color = CharcoalText
+                                    color = primaryTextColor
                                 )
                             }
                         }
@@ -666,11 +711,19 @@ fun AgendaScreen(
                 state = agendaAiState,
                 accentColor = PurpleAccent,
                 accentBgColor = PurpleLight,
+                isWarmReadingMode = isReadingModeActive,
                 testTag = "agenda_ai_card"
             )
 
             Spacer(modifier = Modifier.height(24.dp))
         }
+
+        // Filtro cálido ámbar y reducción de brillo sobre la Agenda
+        WarmReadingScreenOverlay(
+            isReadingModeActive = isReadingModeActive,
+            dimLevel = readingDimLevel,
+            warmthLevel = readingWarmthLevel
+        )
 
         if (showAddEventDialog) {
             AddEventDialog(

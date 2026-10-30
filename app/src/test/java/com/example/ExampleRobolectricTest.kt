@@ -127,5 +127,28 @@ class ExampleRobolectricTest {
         assertNotNull("Proactive support should be triggered on level 1 mood", viewModel.activeProactiveSupport.value)
         val moodAiText = (viewModel.moodAiInsightState.value as AiFeatureUiState.Success).text
         assertTrue("Mood AI should automatically reflect updated mood", moodAiText.contains("Muy bajo"))
+
+        // 6. Verify Warm Reading Mode automatic activation by time of day and brightness/warmth adjustments
+        assertTrue("Automatic reading mode by time should be enabled by default", viewModel.isReadingModeAutoByTime.value)
+        assertEquals(19, viewModel.readingAutoStartHour.value)
+        assertEquals(7, viewModel.readingAutoEndHour.value)
+
+        // Simulate nighttime hour (21:00) -> should activate automatically
+        viewModel.evaluateReadingModeForHour(21)
+        assertTrue("Reading mode should activate automatically at 21:00", viewModel.isReadingModeActive.value)
+
+        // Simulate daytime hour (13:00) -> should deactivate automatically
+        viewModel.evaluateReadingModeForHour(13)
+        assertEquals("Reading mode should deactivate automatically at 13:00", false, viewModel.isReadingModeActive.value)
+
+        // Update schedule to include 13:00 (e.g., 12:00 to 16:00) and verify automatic activation
+        viewModel.updateReadingSchedule(startHour = 12, endHour = 16, currentHour = 13)
+        assertTrue("Reading mode should activate for custom 12:00-16:00 schedule at 13:00", viewModel.isReadingModeActive.value)
+
+        // Verify brightness reduction and warmth sliders
+        viewModel.setReadingDimLevel(0.45f)
+        viewModel.setReadingWarmthLevel(0.70f)
+        assertEquals(0.45f, viewModel.readingDimLevel.value, 0.001f)
+        assertEquals(0.70f, viewModel.readingWarmthLevel.value, 0.001f)
     }
 }

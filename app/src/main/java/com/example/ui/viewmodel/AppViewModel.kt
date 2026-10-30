@@ -138,6 +138,91 @@ class AppViewModel(
     private val _showStreetPrivacyDialog = MutableStateFlow(false)
     val showStreetPrivacyDialog: StateFlow<Boolean> = _showStreetPrivacyDialog.asStateFlow()
 
+    // --- MODO DE LECTURA CÁLIDO Y BRILLO REDUCIDO (DIARIO Y AGENDA) ---
+    private val _readingAutoStartHour = MutableStateFlow(19)
+    val readingAutoStartHour: StateFlow<Int> = _readingAutoStartHour.asStateFlow()
+
+    private val _readingAutoEndHour = MutableStateFlow(7)
+    val readingAutoEndHour: StateFlow<Int> = _readingAutoEndHour.asStateFlow()
+
+    private val _isReadingModeAutoByTime = MutableStateFlow(true)
+    val isReadingModeAutoByTime: StateFlow<Boolean> = _isReadingModeAutoByTime.asStateFlow()
+
+    private val _isReadingModeActive = MutableStateFlow(
+        isHourInReadingSchedule(Calendar.getInstance().get(Calendar.HOUR_OF_DAY), 19, 7)
+    )
+    val isReadingModeActive: StateFlow<Boolean> = _isReadingModeActive.asStateFlow()
+
+    private val _readingDimLevel = MutableStateFlow(0.35f)
+    val readingDimLevel: StateFlow<Float> = _readingDimLevel.asStateFlow()
+
+    private val _readingWarmthLevel = MutableStateFlow(0.60f)
+    val readingWarmthLevel: StateFlow<Float> = _readingWarmthLevel.asStateFlow()
+
+    private val _showReadingModeDialog = MutableStateFlow(false)
+    val showReadingModeDialog: StateFlow<Boolean> = _showReadingModeDialog.asStateFlow()
+
+    private fun isHourInReadingSchedule(hour: Int, start: Int, end: Int): Boolean {
+        return if (start <= end) {
+            hour in start..end
+        } else {
+            hour >= start || hour < end
+        }
+    }
+
+    fun evaluateReadingModeForHour(hourOfDay: Int) {
+        if (_isReadingModeAutoByTime.value) {
+            _isReadingModeActive.value = isHourInReadingSchedule(
+                hour = hourOfDay,
+                start = _readingAutoStartHour.value,
+                end = _readingAutoEndHour.value
+            )
+        }
+    }
+
+    fun setReadingModeEnabled(enabled: Boolean) {
+        _isReadingModeActive.value = enabled
+    }
+
+    fun toggleReadingMode() {
+        _isReadingModeActive.value = !_isReadingModeActive.value
+    }
+
+    fun setReadingModeAutoByTime(enabled: Boolean) {
+        _isReadingModeAutoByTime.value = enabled
+        if (enabled) {
+            evaluateReadingModeForHour(Calendar.getInstance().get(Calendar.HOUR_OF_DAY))
+        }
+    }
+
+    fun updateReadingSchedule(
+        startHour: Int,
+        endHour: Int,
+        currentHour: Int = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+    ) {
+        _readingAutoStartHour.value = startHour.coerceIn(0, 23)
+        _readingAutoEndHour.value = endHour.coerceIn(0, 23)
+        if (_isReadingModeAutoByTime.value) {
+            evaluateReadingModeForHour(currentHour)
+        }
+    }
+
+    fun setReadingDimLevel(level: Float) {
+        _readingDimLevel.value = level.coerceIn(0.10f, 0.75f)
+    }
+
+    fun setReadingWarmthLevel(level: Float) {
+        _readingWarmthLevel.value = level.coerceIn(0.15f, 1.0f)
+    }
+
+    fun openReadingModeDialog() {
+        _showReadingModeDialog.value = true
+    }
+
+    fun closeReadingModeDialog() {
+        _showReadingModeDialog.value = false
+    }
+
     private val streetPrivacyDetector = StreetPrivacyDetector(application) { reason ->
         if (_autoMotionPrivacyEnabled.value && !_isStreetModeActive.value) {
             _isStreetModeActive.value = true
@@ -244,7 +329,7 @@ class AppViewModel(
 
     private val confirmedInSession = mutableSetOf<String>()
     private val snoozedUntilMillis = mutableMapOf<String, Long>()
-    private val explicitlyArmedKeys = mutableSetOf<String>()
+    private val silencedAlarmKeys = mutableSetOf<String>()
 
     // Hábitos
     val habits: StateFlow<List<Habit>> = repository.observeHabits(currentUserId)
@@ -322,12 +407,18 @@ class AppViewModel(
         } else {
             ""
         }
+        if (next) {
+            generateAiCamouflageAliases()
+        }
     }
 
     fun setStreetMode(enabled: Boolean, reason: String = "Activado manualmente") {
         _isStreetModeActive.value = enabled
         _temporarilyRevealedIds.value = emptySet()
         _streetModeTriggerReason.value = if (enabled) reason else ""
+        if (enabled) {
+            generateAiCamouflageAliases()
+        }
     }
 
     fun setAutoMotionPrivacy(enabled: Boolean) {
@@ -343,7 +434,7 @@ class AppViewModel(
         _isAiDisguiseEnabled.value = enabled
         if (enabled && !_isStreetModeActive.value) {
             _isStreetModeActive.value = true
-            _streetModeTriggerReason.value = "Modo Calle + Camuflaje IA activo"
+            _streetModeTriggerReason.value = "Modo Calle activo"
         }
         if (enabled) {
             generateAiCamouflageAliases()
@@ -355,6 +446,7 @@ class AppViewModel(
         _temporarilyRevealedIds.value = emptySet()
         _streetModeTriggerReason.value = "Activado automáticamente al detectar movimiento en calle"
         _showStreetPrivacyDialog.value = false
+        generateAiCamouflageAliases()
     }
 
     fun openStreetPrivacyDialog() {
@@ -578,31 +670,20 @@ class AppViewModel(
             .sortedWith(compareBy<CalendarEvent> { it.date }.thenBy { it.time })
             .firstOrNull()
 
-        val moodPart = if (todayMood != null) {
-            "Hoy registraste un ánimo ${todayMood.levelLabel.lowercase()}" +
-                if (todayMood.feelings.isNotEmpty()) " (${todayMood.feelings.joinToString(", ")})" else ""
+        val statusSummary = buildList {
+            if (todayMood != null) add("ánimo ${todayMood.levelLabel.lowercase()}")
+            if (totalMeds > 0) add("$takenMeds/$totalMeds tomas")
+            if (totalHabits > 0) add("$doneHabits/$totalHabits hábitos")
+        }.joinToString(" • ")
+
+        val prefix = if (statusSummary.isNotBlank()) "Hoy: $statusSummary. " else ""
+        val tip = if (nextEvent != null) {
+            "Próxima cita: '${nextEvent.title}' (${nextEvent.date} ${nextEvent.time})."
         } else {
-            "Tu espacio de bienestar está activo y listo para acompañarte hoy"
+            "Regálate tres respiraciones profundas y avanza a tu propio ritmo."
         }
 
-        val routinePart = when {
-            totalMeds > 0 && totalHabits > 0 ->
-                "Llevas $takenMeds de $totalMeds tomas de pastillas y $doneHabits de $totalHabits hábitos completados hoy."
-            totalMeds > 0 ->
-                "Llevas $takenMeds de $totalMeds tomas de pastillas registradas en tu programación de hoy."
-            totalHabits > 0 ->
-                "Has completado $doneHabits de $totalHabits hábitos de autocuidado hoy."
-            else ->
-                "Avanza un paso a la vez registrando tus horarios de pastillas, hábitos y emociones."
-        }
-
-        val eventPart = if (nextEvent != null) {
-            "Tienes agendado '${nextEvent.title}' (${nextEvent.type}) el ${nextEvent.date} a las ${nextEvent.time}; regálate una pausa de respiración consciente antes de tu compromiso."
-        } else {
-            "Te recomiendo hacer tres respiraciones profundas y beber un vaso de agua para mantener el equilibrio durante las próximas horas."
-        }
-
-        return "$moodPart. $routinePart $eventPart"
+        return "$prefix$tip"
     }
 
     private fun buildContextualDiaryReflection(customDraft: String = ""): String {
@@ -613,41 +694,35 @@ class AppViewModel(
         val latest = entries.firstOrNull()
         return when {
             customDraft.isNotBlank() ->
-                "Gracias por poner en palabras lo que estás viviendo. Observar tus pensamientos sin juzgarlos reduce la carga emocional; pregúntate con amabilidad qué necesita hoy la parte más sensible de ti."
+                "Poner en palabras lo que sientes alivia la mente; obsérvalo hoy sin juzgarte."
             latest != null ->
-                "En tu nota '${latest.title}' (${latest.category}) muestras una valiosa disposición a escucharte. Recuerda que tus emociones son mensajeras temporales y no definen toda tu realidad; ¿qué pequeño gesto de autocompasión puedes ofrecerte hoy al releer esta reflexión?"
+                "A partir de '${latest.title}': recuerda que cada emoción es temporal; ¿qué pequeño gesto amable puedes darte hoy?"
             else ->
-                "Escribir lo que sientes ayuda a ordenar la mente y liberar tensión acumulada. Hoy puedes empezar anotando un pensamiento que quieras soltar o un pequeño detalle por el cual agradecerte."
+                "Escribir ayuda a soltar tensión mental. Anota una idea breve o algo que agradezcas hoy."
         }
     }
 
     private fun buildContextualMoodAnalysis(): String {
-        val recentMoods = moodEntries.value.take(5)
-        val latestMood = recentMoods.firstOrNull()
+        val latestMood = moodEntries.value.firstOrNull()
         val latestScale = clinicalAssessments.value.firstOrNull()
 
         val moodObservation = if (latestMood != null) {
-            val feelingsText = if (latestMood.feelings.isNotEmpty()) {
-                " acompañado de ${latestMood.feelings.joinToString(", ").lowercase()}"
-            } else ""
-            "Tu registro más reciente refleja un estado '${latestMood.levelLabel}' (nivel ${latestMood.level}/5)$feelingsText."
+            "Último registro: '${latestMood.levelLabel}' (${latestMood.level}/5)."
         } else {
-            "Observar cómo varía tu energía emocional día a día te permite anticipar momentos de tensión con suavidad."
+            "Registra tu ánimo arriba para recibir pautas adaptadas a tu energía de hoy."
         }
 
-        val scaleObservation = if (latestScale != null) {
-            "En tu evaluación ${latestScale.scaleType} obtuviste ${latestScale.score}/${latestScale.maxScore} (${latestScale.severityLevel})."
-        } else {
-            "También tienes disponibles las escalas PHQ-9, GAD-7 y EVA para profundizar en tu seguimiento."
-        }
+        val scalePart = if (latestScale != null) {
+            " ${latestScale.scaleType}: ${latestScale.score}/${latestScale.maxScore}."
+        } else ""
 
         val recommendation = when (latestMood?.level ?: 3) {
-            1, 2 -> "Hoy prioriza reducir la autoexigencia: practica respiración 4-4-6 (inhala 4s, sostén 4s, exhala 6s) y apóyate en una persona o línea de confianza si lo necesitas."
-            3 -> "Para sostener tu estabilidad hoy, haz una pausa breve lejos de pantallas y estira hombros y cuello con atención plena."
-            else -> "Aprovecha este momento de bienestar para agradecer tu constancia y anclar una actividad que te recargue de serenidad."
+            1, 2 -> " Reduce la autoexigencia y haz 3 respiraciones lentas (4-4-6)."
+            3 -> " Haz una breve pausa lejos de pantallas para estirar hombros y cuello."
+            else -> " Aprovecha esta calma para sostener tus hábitos del día."
         }
 
-        return "$moodObservation $scaleObservation $recommendation"
+        return "$moodObservation$scalePart$recommendation"
     }
 
     private fun buildContextualMedicationGuidance(): String {
@@ -656,9 +731,9 @@ class AppViewModel(
         val totalDoses = medsList.sumOf { it.scheduledTimes.size }
         return if (medsList.isNotEmpty()) {
             val scheduleSummary = medsList.joinToString(", ") { "${it.name} (${it.scheduledTimes.joinToString("/")})" }
-            "Tienes programadas tus alarmas para: $scheduleSummary ($takenCount de $totalDoses tomas completadas hoy). Asocia cada horario a un hábito fijo —como dejar un vaso de agua visible junto a tus pastillas— y recuerda consultar cualquier ajuste de dosis con tu médico tratante."
+            "Programación activa: $scheduleSummary ($takenCount/$totalDoses tomas hoy). Asocia cada toma a un hábito fijo."
         } else {
-            "Configura arriba el nombre de tu pastilla y la hora exacta para activar su alarma sonora automática. Vincular tus tomas a una rutina fija del día (como el desayuno o antes de dormir) fortalece tu adherencia terapéutica."
+            "Escribe arriba el nombre de tu pastilla y elige la hora para activar su alarma diaria."
         }
     }
 
@@ -671,25 +746,25 @@ class AppViewModel(
                 name = "Respiración diafragmática durante 3 minutos",
                 category = "Salud Mental",
                 timeOfDay = "Mañana",
-                reason = "Activa el sistema nervioso parasimpático y disminuye la tensión emocional desde el inicio del día."
+                reason = "Disminuye la tensión emocional desde el inicio del día."
             ),
             AiHabitSuggestion(
                 name = "Caminata suave de 10 minutos sin pantallas",
                 category = "Físico y Sueño",
                 timeOfDay = "Tarde",
-                reason = "Ayuda a despejar la rumiación mental y regula el ciclo natural de energía y descanso."
+                reason = "Despeja la mente y regula tu energía diaria."
             ),
             AiHabitSuggestion(
                 name = "Anotar 3 cosas que salieron bien hoy",
                 category = "Salud Mental",
                 timeOfDay = "Noche",
-                reason = "Entrena la atención hacia logros cotidianos y favorece un descanso nocturno más sereno."
+                reason = "Favorece un descanso nocturno más sereno."
             ),
             AiHabitSuggestion(
                 name = "Enviar un mensaje afectuoso a alguien cercano",
                 category = "Social",
                 timeOfDay = "Tarde",
-                reason = "Fortalece tu red de apoyo emocional y reduce la sensación de aislamiento."
+                reason = "Fortalece tu red de apoyo emocional."
             )
         )
 
@@ -710,19 +785,18 @@ class AppViewModel(
             .sortedWith(compareBy<CalendarEvent> { it.date }.thenBy { it.time })
             .take(2)
         val recentMood = moodEntries.value.firstOrNull()?.levelLabel ?: "Estable"
-        val medsCount = medications.value.size
 
         return when {
             dateEvents.isNotEmpty() -> {
                 val firstEv = dateEvents.first()
-                "Para tu cita '${firstEv.title}' (${firstEv.type} a las ${firstEv.time}), te sugiero comentar cómo ha evolucionado tu ánimo ($recentMood) y revisar tus $medsCount pastillas activas. Anota de antemano cualquier duda sobre horarios o síntomas para aprovechar al máximo la consulta."
+                "Para '${firstEv.title}' (${firstEv.time}), comenta tu ánimo reciente ($recentMood) y lleva anotadas tus dudas."
             }
             upcomingEvents.isNotEmpty() -> {
                 val nextEv = upcomingEvents.first()
-                "En la fecha seleccionada ($targetDate) tienes el día libre de consultas; tu próxima cita es '${nextEv.title}' el ${nextEv.date} a las ${nextEv.time}. Aprovecha hoy para mantener un ritmo tranquilo y llevar al día tu registro emocional."
+                "Día libre el $targetDate. Tu próxima cita es '${nextEv.title}' el ${nextEv.date} a las ${nextEv.time}."
             }
             else -> {
-                "No tienes citas médicas registradas para el $targetDate. Es un buen día para organizar tus horarios de descanso con calma y agendar tus próximos controles de salud o terapia."
+                "Sin citas el $targetDate. Buen momento para organizar tu descanso o agendar tu próximo control."
             }
         }
     }
@@ -746,17 +820,9 @@ class AppViewModel(
                     .firstOrNull()
 
                 val prompt = """
-                    Actúa como un psicólogo clínico y acompañante cálido de bienestar en la app "Cuenta Conmigo".
-                    Datos actuales del usuario hoy ($todayDateString):
-                    - Estado de ánimo hoy: ${todayMood?.let { "${it.levelLabel} (${it.feelings.joinToString(", ")})" } ?: "Aún sin registrar hoy"}
-                    - Pastillas hoy: $takenMeds de $totalMeds tomas completadas.
-                    - Hábitos hoy: $doneHabits de $totalHabits completados.
-                    - Próxima cita en agenda: ${nextEvent?.let { "${it.title} (${it.type}) el ${it.date} a las ${it.time}" } ?: "Sin citas próximas"}
-                    
-                    Escribe en español un resumen personalizado, empático y práctico de 3 a 4 oraciones cortas con:
-                    1. Un reconocimiento cálido de su progreso hoy.
-                    2. Una micro-recomendación concreta para cuidar su bienestar en las próximas horas.
-                    No uses formato markdown complejo ni asteriscos innecesarios.
+                    Eres un acompañante sereno de bienestar en "Cuenta Conmigo".
+                    Datos hoy ($todayDateString): ánimo=${todayMood?.levelLabel ?: "sin registrar"}, pastillas=$takenMeds/$totalMeds, hábitos=$doneHabits/$totalHabits, próxima cita=${nextEvent?.let { "${it.title} (${it.date} ${it.time})" } ?: "ninguna"}.
+                    Escribe en español una sola frase o máximo 2 oraciones breves (máximo 22 palabras) con el balance de hoy y un consejo suave. Sin markdown.
                 """.trimIndent()
 
                 val response = withTimeout(60_000L) {
@@ -786,24 +852,19 @@ class AppViewModel(
 
         diaryAiJob = viewModelScope.launch {
             try {
-                val recentEntries = journalEntries.value.take(3)
+                val recentEntries = journalEntries.value.take(2)
                 val contextText = if (customDraft.isNotBlank()) {
-                    "Borrador actual: $customDraft"
+                    "Borrador: $customDraft"
                 } else if (recentEntries.isNotEmpty()) {
-                    recentEntries.joinToString("\n") { "- [${it.category}] ${it.title}: ${it.content.take(180)}" }
+                    recentEntries.joinToString("\n") { "- [${it.category}] ${it.title}: ${it.content.take(140)}" }
                 } else {
-                    "El usuario está comenzando su diario emocional y busca inspiración para reflexionar hoy."
+                    "Inicio de diario emocional."
                 }
 
                 val prompt = """
-                    Actúa como un terapeuta cognitivo-conductual (TCC) compasivo dentro de "Cuenta Conmigo".
-                    Analiza las siguientes reflexiones del diario del usuario:
-                    $contextText
-                    
-                    Responde en español en máximo 4 oraciones claras y cálidas:
-                    1. Valida sus emociones con empatía genuina.
-                    2. Ofrece una reestructuración cognitiva amable o una pregunta reflexiva para su cuaderno.
-                    Texto limpio sin símbolos markdown.
+                    Actúa como un terapeuta compasivo en "Cuenta Conmigo".
+                    Notas recientes: $contextText
+                    Escribe en español máximo 2 oraciones breves (máximo 24 palabras) validando su emoción y dejando una pregunta reflexiva corta. Sin markdown.
                 """.trimIndent()
 
                 val response = withTimeout(60_000L) {
@@ -833,34 +894,17 @@ class AppViewModel(
 
         moodAiJob = viewModelScope.launch {
             try {
-                val recentMoods = moodEntries.value.take(5)
-                val recentScales = clinicalAssessments.value.take(3)
-
+                val recentMoods = moodEntries.value.take(3)
                 val moodsSummary = if (recentMoods.isNotEmpty()) {
-                    recentMoods.joinToString("; ") {
-                        "${it.date}: ${it.levelLabel} (nivel ${it.level}/5, emociones: ${it.feelings.joinToString(",")})"
-                    }
+                    recentMoods.joinToString("; ") { "${it.date}: ${it.levelLabel} (${it.level}/5)" }
                 } else {
-                    "Sin registros de estado de ánimo previos"
-                }
-
-                val scalesSummary = if (recentScales.isNotEmpty()) {
-                    recentScales.joinToString("; ") {
-                        "${it.scaleName}: puntaje ${it.score}/${it.maxScore} (${it.severityLevel})"
-                    }
-                } else {
-                    "Sin evaluaciones clínicas recientes"
+                    "Sin registros previos"
                 }
 
                 val prompt = """
-                    Eres un especialista en bienestar emocional dentro de "Cuenta Conmigo".
-                    Registros recientes de ánimo: $moodsSummary
-                    Evaluaciones clínicas recientes (PHQ-9/GAD-7/EVA): $scalesSummary
-                    
-                    Brinda en español una orientación breve y empática (3 a 4 oraciones):
-                    1. Observa la tendencia emocional con calidez y sin juzgar.
-                    2. Sugiere un ejercicio práctico de regulación emocional o respiración para hoy.
-                    Sin etiquetas markdown.
+                    Especialista en bienestar emocional en "Cuenta Conmigo".
+                    Ánimo reciente: $moodsSummary.
+                    Responde en español en máximo 2 oraciones cortas (máximo 22 palabras), mencionando su estado reciente y una micro-pausa práctica. Sin markdown.
                 """.trimIndent()
 
                 val response = withTimeout(60_000L) {
@@ -892,21 +936,15 @@ class AppViewModel(
             try {
                 val medsList = medications.value
                 val medsDescription = if (medsList.isNotEmpty()) {
-                    medsList.joinToString("; ") {
-                        "${it.name} (${it.dosage}) en horarios ${it.scheduledTimes.joinToString(", ")} [notas: ${it.notes.ifBlank { "ninguna" }}]"
-                    }
+                    medsList.joinToString("; ") { "${it.name} (${it.scheduledTimes.joinToString(", ")})" }
                 } else {
-                    "El usuario aún no ha registrado pastillas o está configurando sus primeras alarmas."
+                    "Sin pastillas registradas aún."
                 }
 
                 val prompt = """
-                    Actúa como un asistente de adherencia terapéutica y organización diaria en "Cuenta Conmigo".
-                    Pastillas y horarios configurados por el usuario: $medsDescription
-                    
-                    Redacta en español un consejo práctico y motivador (3 a 4 oraciones) sobre:
-                    1. Cómo anclar la toma de sus pastillas a rutinas diarias (desayuno, cepillado, vaso de agua visible) para no olvidar ninguna alarma.
-                    2. Un recordatorio amable de consultar siempre cualquier ajuste de dosis con su médico tratante.
-                    Sin asteriscos ni markdown.
+                    Asistente de adherencia en "Cuenta Conmigo".
+                    Pastillas: $medsDescription.
+                    Escribe en español una sola oración breve (máximo 20 palabras) sobre cómo recordar sus tomas hoy. Si hay pastillas, menciona su nombre. Sin markdown.
                 """.trimIndent()
 
                 val response = withTimeout(60_000L) {
@@ -940,8 +978,8 @@ class AppViewModel(
                 val latestMood = moodEntries.value.firstOrNull()?.levelLabel ?: "Equilibrado"
 
                 val prompt = """
-                    Sugiere un nuevo micro-hábito diario saludable y fácil de cumplir en español para un usuario cuyo ánimo reciente es "$latestMood".
-                    Hábitos que ya tiene registrados (no repetir): ${existingHabits.ifBlank { "ninguno" }}.
+                    Sugiere un nuevo micro-hábito diario breve en español (máximo 6 palabras en "name") para ánimo "$latestMood".
+                    No repetir: ${existingHabits.ifBlank { "ninguno" }}.
                 """.trimIndent()
 
                 val response = withTimeout(60_000L) {
@@ -988,35 +1026,28 @@ class AppViewModel(
                 val upcomingEvents = calendarEvents.value
                     .filter { it.date >= todayDateString }
                     .sortedWith(compareBy<CalendarEvent> { it.date }.thenBy { it.time })
-                    .take(3)
-                val recentMoods = moodEntries.value.take(4)
-                val medsCount = medications.value.size
+                    .take(2)
+                val recentMoods = moodEntries.value.take(2)
 
                 val eventContext = when {
                     dateEvents.isNotEmpty() ->
-                        "Citas del día $targetDate: " + dateEvents.joinToString("; ") { "${it.title} (${it.type}) a las ${it.time} - Notas: ${it.notes}" }
+                        "Citas el $targetDate: " + dateEvents.joinToString("; ") { "${it.title} (${it.type}) a las ${it.time}" }
                     upcomingEvents.isNotEmpty() ->
-                        "Próximas citas en agenda: " + upcomingEvents.joinToString("; ") { "${it.title} (${it.type}) el ${it.date} a las ${it.time}" }
+                        "Próxima cita: " + upcomingEvents.joinToString("; ") { "${it.title} el ${it.date} a las ${it.time}" }
                     else ->
-                        "Día $targetDate sin citas médicas programadas aún."
+                        "Día $targetDate sin citas."
                 }
 
                 val moodContext = if (recentMoods.isNotEmpty()) {
-                    recentMoods.joinToString(", ") { "${it.date}: ${it.levelLabel}" }
+                    recentMoods.joinToString(", ") { it.levelLabel }
                 } else {
-                    "Sin registros recientes"
+                    "Estable"
                 }
 
                 val prompt = """
-                    Actúa como un asistente inteligente de agenda clínica y bienestar en "Cuenta Conmigo".
-                    Contexto de agenda: $eventContext
-                    Ánimo reciente del usuario: $moodContext
-                    Pastillas activas bajo seguimiento: $medsCount
-                    
-                    Genera en español una guía breve y estructurada (máximo 4 puntos cortos):
-                    1. Si hay cita médica o psicológica, sugiere 2 o 3 preguntas o puntos clave para conversar con el profesional según su ánimo y seguimiento.
-                    2. Si no hay cita ese día, ofrece una sugerencia para organizar su día con calma y equilibrio.
-                    Usa texto limpio sin símbolos markdown complejos.
+                    Asistente de agenda en "Cuenta Conmigo".
+                    Contexto: $eventContext. Ánimo reciente: $moodContext.
+                    Escribe en español máximo 2 oraciones breves (máximo 22 palabras) para preparar su cita o su día con calma. Si hay cita, incluye su título. Sin markdown.
                 """.trimIndent()
 
                 val response = withTimeout(60_000L) {
@@ -1146,7 +1177,7 @@ class AppViewModel(
                 val key = "${med.id}_$t"
                 confirmedInSession.remove(key)
                 snoozedUntilMillis.remove(key)
-                explicitlyArmedKeys.add(key)
+                silencedAlarmKeys.remove(key)
             }
             repository.saveMedication(med)
             alarmPlayer.scheduleSystemAlarmsForToday(med.id, med.name, med.dosage, sortedTimes)
@@ -1160,12 +1191,13 @@ class AppViewModel(
             med.scheduledTimes.forEach { oldTime ->
                 confirmedInSession.remove("${med.id}_$oldTime")
                 snoozedUntilMillis.remove("${med.id}_$oldTime")
+                silencedAlarmKeys.remove("${med.id}_$oldTime")
             }
             sortedTimes.forEach { newTime ->
                 val key = "${med.id}_$newTime"
                 confirmedInSession.remove(key)
                 snoozedUntilMillis.remove(key)
-                explicitlyArmedKeys.add(key)
+                silencedAlarmKeys.remove(key)
             }
             val updated = med.copy(
                 name = name.trim(),
@@ -1181,7 +1213,6 @@ class AppViewModel(
 
     /**
      * Programador directo de alarma para una pastilla nueva o existente.
-     * Guarda la hora exacta HH:mm, limpia bloqueos previos y activa la alarma.
      */
     fun programMedicationAlarm(
         existingMed: Medication?,
@@ -1198,6 +1229,7 @@ class AppViewModel(
                 existingMed.scheduledTimes.forEach { oldT ->
                     confirmedInSession.remove("${existingMed.id}_$oldT")
                     snoozedUntilMillis.remove("${existingMed.id}_$oldT")
+                    silencedAlarmKeys.remove("${existingMed.id}_$oldT")
                 }
                 existingMed.copy(
                     name = cleanName,
@@ -1219,9 +1251,8 @@ class AppViewModel(
             val sessionKey = "${savedMed.id}_$cleanTime"
             confirmedInSession.remove(sessionKey)
             snoozedUntilMillis.remove(sessionKey)
-            explicitlyArmedKeys.add(sessionKey)
+            silencedAlarmKeys.remove(sessionKey)
 
-            // Si ya estaba marcada como tomada hoy a esa hora, desmarcar para que suene la nueva alarma
             repository.unrecordMedicationTaken(savedMed.id, todayDateString, cleanTime)
             repository.saveMedication(savedMed)
             alarmPlayer.scheduleSystemAlarmsForToday(
@@ -1230,22 +1261,7 @@ class AppViewModel(
                 dosage = savedMed.dosage,
                 times = listOf(cleanTime)
             )
-
-            // Evaluar inmediatamente si la hora colocada ya llegó o es el minuto actual
-            val now = Calendar.getInstance()
-            val currentMinOfDay = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
-            val parts = cleanTime.split(":")
-            val schedMinOfDay = if (parts.size == 2) {
-                (parts[0].toIntOrNull() ?: 0) * 60 + (parts[1].toIntOrNull() ?: 0)
-            } else {
-                currentMinOfDay
-            }
-
-            if (schedMinOfDay == currentMinOfDay) {
-                triggerAlarmForMedication(savedMed)
-            } else {
-                checkScheduledMedicationAlarms()
-            }
+            checkScheduledMedicationAlarms()
         }
     }
 
@@ -1270,6 +1286,11 @@ class AppViewModel(
 
     fun deleteMedication(id: String) {
         viewModelScope.launch {
+            val remainingDoses = _activeAlarmDoses.value.filterNot { it.medication.id == id }
+            _activeAlarmDoses.value = remainingDoses
+            if (remainingDoses.isEmpty()) {
+                alarmPlayer.stopAlarm()
+            }
             repository.deleteMedication(id)
         }
     }
@@ -1283,6 +1304,7 @@ class AppViewModel(
                 repository.unrecordMedicationTaken(med.id, todayDateString, scheduledTime)
             } else {
                 confirmedInSession.add(sessionKey)
+                silencedAlarmKeys.add(sessionKey)
                 snoozedUntilMillis.remove(sessionKey)
                 repository.recordMedicationTaken(med, todayDateString, scheduledTime)
             }
@@ -1406,9 +1428,11 @@ class AppViewModel(
                     val sessionKey = "${med.id}_$timeStr"
                     val isTaken = confirmedInSession.contains(sessionKey) ||
                         logs.any { it.medicationId == med.id && it.scheduledTime == timeStr }
+                    val isSilenced = silencedAlarmKeys.contains(sessionKey)
 
                     val snoozedUntil = snoozedUntilMillis[sessionKey] ?: 0L
                     val isSnoozedNow = nowMillis < snoozedUntil
+                    val snoozeJustExpired = snoozedUntil > 0L && nowMillis >= snoozedUntil
 
                     if (!isTaken) {
                         if (schedMinutes > currentMinutesOfDay) {
@@ -1418,9 +1442,9 @@ class AppViewModel(
                                 val remMin = diffSec / 60
                                 val remSec = diffSec % 60
                                 val countdownStr = if (remMin > 0) "${remMin}m ${remSec}s" else "${remSec}s"
-                                nextUpcomingLabel = "Próxima alarma: ${med.name} a las $timeStr (en $countdownStr)"
+                                nextUpcomingLabel = "Próxima: ${med.name} a las $timeStr ($countdownStr)"
                             }
-                        } else if (!isSnoozedNow && (explicitlyArmedKeys.contains(sessionKey) || (currentMinutesOfDay - schedMinutes) in 0..360)) {
+                        } else if (!isSilenced && !isSnoozedNow && (currentMinutesOfDay == schedMinutes || snoozeJustExpired)) {
                             pending.add(PendingDose(med, timeStr, isTestDose = false))
                         } else if (isSnoozedNow) {
                             val diffSec = ((snoozedUntil - nowMillis) / 1000L).toInt().coerceAtLeast(1)
@@ -1428,7 +1452,7 @@ class AppViewModel(
                                 nextUpcomingDiffSec = diffSec
                                 val remMin = diffSec / 60
                                 val remSec = diffSec % 60
-                                nextUpcomingLabel = "Posponiendo: ${med.name} sonará en ${remMin}m ${remSec}s"
+                                nextUpcomingLabel = "Pospuesta: ${med.name} en ${remMin}m ${remSec}s"
                             }
                         }
                     }
@@ -1438,13 +1462,13 @@ class AppViewModel(
 
         _nextScheduledAlarmInfo.value = when {
             pending.isNotEmpty() ->
-                "🔔 Sonando: ${pending.first().medication.name} (${pending.first().scheduledTime})"
+                "Sonando: ${pending.first().medication.name} (${pending.first().scheduledTime})"
             nextUpcomingLabel != null ->
                 nextUpcomingLabel
             currentMeds.isEmpty() ->
-                "Sin alarmas activas"
+                "Sin alarmas"
             else ->
-                "Alarmas de hoy al día"
+                "Horarios configurados"
         }
 
         if (pending.isNotEmpty()) {
@@ -1455,7 +1479,7 @@ class AppViewModel(
                 val summary = if (_isStreetModeActive.value) {
                     "Tienes un recordatorio programado en Cuenta Conmigo"
                 } else {
-                    "Toma pendiente: " + pending.joinToString(", ") { "${it.medication.name} (${it.medication.dosage}) - ${it.scheduledTime}" }
+                    "Hora de tu pastilla: " + pending.joinToString(", ") { "${it.medication.name} (${it.medication.dosage}) - ${it.scheduledTime}" }
                 }
                 alarmPlayer.startAlarm(summary)
             }
@@ -1516,7 +1540,7 @@ class AppViewModel(
                 name = "Pastilla de Prueba",
                 dosage = "1 comprimido",
                 scheduledTimes = listOf(currentTimeStr),
-                notes = "Alarma de prueba activa. Confirma la toma para apagar el sonido."
+                notes = "Alarma de prueba activa."
             )
             pending.add(PendingDose(demoMed, currentTimeStr, isTestDose = true))
         }
@@ -1528,6 +1552,16 @@ class AppViewModel(
             "Toma requerida: " + pending.joinToString(", ") { "${it.medication.name} (${it.medication.dosage}) - ${it.scheduledTime}" }
         }
         alarmPlayer.startAlarm(summary)
+    }
+
+    fun dismissActiveAlarm() {
+        for (dose in _activeAlarmDoses.value) {
+            val sessionKey = "${dose.medication.id}_${dose.scheduledTime}"
+            silencedAlarmKeys.add(sessionKey)
+            snoozedUntilMillis.remove(sessionKey)
+        }
+        _activeAlarmDoses.value = emptyList()
+        alarmPlayer.stopAlarm()
     }
 
     fun snoozeMedicationAlarm(minutes: Int = 5) {
@@ -1544,8 +1578,8 @@ class AppViewModel(
         viewModelScope.launch {
             val sessionKey = "${dose.medication.id}_${dose.scheduledTime}"
             confirmedInSession.add(sessionKey)
+            silencedAlarmKeys.add(sessionKey)
             snoozedUntilMillis.remove(sessionKey)
-            explicitlyArmedKeys.remove(sessionKey)
 
             if (!dose.isTestDose && dose.medication.id != "demo_test_pill") {
                 repository.recordMedicationTaken(dose.medication, todayDateString, dose.scheduledTime)
@@ -1566,8 +1600,8 @@ class AppViewModel(
             for (dose in dosesToConfirm) {
                 val sessionKey = "${dose.medication.id}_${dose.scheduledTime}"
                 confirmedInSession.add(sessionKey)
+                silencedAlarmKeys.add(sessionKey)
                 snoozedUntilMillis.remove(sessionKey)
-                explicitlyArmedKeys.remove(sessionKey)
                 if (!dose.isTestDose && dose.medication.id != "demo_test_pill") {
                     repository.recordMedicationTaken(dose.medication, todayDateString, dose.scheduledTime)
                 }

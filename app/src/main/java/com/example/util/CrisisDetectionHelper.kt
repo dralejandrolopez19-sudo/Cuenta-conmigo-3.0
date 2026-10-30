@@ -28,7 +28,7 @@ object CrisisDetectionHelper {
     )
 
     fun evaluate(level: Int? = null, textContent: String = "", feelings: List<String> = emptyList()): CrisisAssessment {
-        val lowerText = textContent.lowercase().trim()
+        val lowerText = "$textContent ${feelings.joinToString(" ")}".lowercase().trim()
 
         // 1. Revisar palabras clave de alto riesgo
         for (kw in HIGH_RISK_KEYWORDS) {

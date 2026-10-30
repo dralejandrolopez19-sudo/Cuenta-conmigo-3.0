@@ -379,7 +379,11 @@ class CuentaConmigoRepository(
             val path = "users/$uid/mood_entries"
             db.collection("users").document(uid).collection("mood_entries")
                 .snapshots()
-                .map { snap -> snap.toObjects(MoodEntry::class.java).sortedByDescending { it.date } }
+                .map { snap ->
+                    snap.documents.mapNotNull { doc ->
+                        doc.toObject(MoodEntry::class.java)?.copy(id = doc.id)
+                    }.sortedByDescending { it.date }
+                }
                 .catch { e ->
                     if (e is Exception && auth.currentUser?.uid == uid) {
                         handleFirestoreError(e, OperationType.LIST, path)
@@ -402,6 +406,7 @@ class CuentaConmigoRepository(
         val colRef = db.collection("users").document(uid).collection("mood_entries")
         val docRef = colRef.document(entry.id.ifBlank { "mood_${entry.date}" })
         val payload = mapOf(
+            "id" to docRef.id,
             "userId" to uid,
             "level" to entry.level,
             "levelLabel" to entry.levelLabel,
@@ -430,7 +435,11 @@ class CuentaConmigoRepository(
             val path = "users/$uid/clinical_assessments"
             db.collection("users").document(uid).collection("clinical_assessments")
                 .snapshots()
-                .map { snap -> snap.toObjects(ClinicalScaleAssessment::class.java).sortedByDescending { it.date } }
+                .map { snap ->
+                    snap.documents.mapNotNull { doc ->
+                        doc.toObject(ClinicalScaleAssessment::class.java)?.copy(id = doc.id)
+                    }.sortedByDescending { it.date }
+                }
                 .catch { e ->
                     if (e is Exception && auth.currentUser?.uid == uid) {
                         handleFirestoreError(e, OperationType.LIST, path)
@@ -452,6 +461,7 @@ class CuentaConmigoRepository(
         val colRef = db.collection("users").document(uid).collection("clinical_assessments")
         val docRef = if (assessment.id.isNotBlank()) colRef.document(assessment.id) else colRef.document()
         val payload = mapOf(
+            "id" to docRef.id,
             "userId" to uid,
             "scaleType" to assessment.scaleType,
             "scaleName" to assessment.scaleName,
@@ -484,8 +494,9 @@ class CuentaConmigoRepository(
             db.collection("users").document(uid).collection("journal_entries")
                 .snapshots()
                 .map { snap ->
-                    snap.toObjects(JournalEntry::class.java)
-                        .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
+                    snap.documents.mapNotNull { doc ->
+                        doc.toObject(JournalEntry::class.java)?.copy(id = doc.id)
+                    }.sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
                 }
                 .catch { e ->
                     if (e is Exception && auth.currentUser?.uid == uid) {
@@ -508,6 +519,7 @@ class CuentaConmigoRepository(
         val colRef = db.collection("users").document(uid).collection("journal_entries")
         val docRef = if (entry.id.isNotBlank()) colRef.document(entry.id) else colRef.document()
         val payload = mapOf(
+            "id" to docRef.id,
             "userId" to uid,
             "title" to entry.title,
             "content" to entry.content,
@@ -524,6 +536,7 @@ class CuentaConmigoRepository(
     }
 
     suspend fun deleteJournalEntry(entryId: String) {
+        if (entryId.isBlank()) return
         if (isGuest()) {
             InMemoryGuestStore.journalEntries.value = InMemoryGuestStore.journalEntries.value.filter { it.id != entryId }
             return
@@ -550,7 +563,11 @@ class CuentaConmigoRepository(
             val path = "users/$uid/medications"
             db.collection("users").document(uid).collection("medications")
                 .snapshots()
-                .map { snap -> snap.toObjects(Medication::class.java).filter { it.active } }
+                .map { snap ->
+                    snap.documents.mapNotNull { doc ->
+                        doc.toObject(Medication::class.java)?.copy(id = doc.id)
+                    }.filter { it.active }
+                }
                 .catch { e ->
                     if (e is Exception && auth.currentUser?.uid == uid) {
                         handleFirestoreError(e, OperationType.LIST, path)
@@ -575,7 +592,11 @@ class CuentaConmigoRepository(
             db.collection("users").document(uid).collection("medication_logs")
                 .whereEqualTo("date", date)
                 .snapshots()
-                .map { snap -> snap.toObjects(MedicationLog::class.java) }
+                .map { snap ->
+                    snap.documents.mapNotNull { doc ->
+                        doc.toObject(MedicationLog::class.java)?.copy(id = doc.id)
+                    }
+                }
                 .catch { e ->
                     if (e is Exception && auth.currentUser?.uid == uid) {
                         handleFirestoreError(e, OperationType.LIST, path)
@@ -597,6 +618,7 @@ class CuentaConmigoRepository(
         val colRef = db.collection("users").document(uid).collection("medications")
         val docRef = if (med.id.isNotBlank()) colRef.document(med.id) else colRef.document()
         val payload = mapOf(
+            "id" to docRef.id,
             "userId" to uid,
             "name" to med.name,
             "dosage" to med.dosage,
@@ -615,6 +637,7 @@ class CuentaConmigoRepository(
     }
 
     suspend fun deleteMedication(medId: String) {
+        if (medId.isBlank()) return
         if (isGuest()) {
             InMemoryGuestStore.medications.value = InMemoryGuestStore.medications.value.filter { it.id != medId }
             return
@@ -630,10 +653,11 @@ class CuentaConmigoRepository(
     }
 
     suspend fun recordMedicationTaken(med: Medication, date: String, scheduledTime: String) {
+        val safeMedId = med.id.ifBlank { med.name.lowercase().replace(" ", "_") }
         if (isGuest(med.userId)) {
             val log = MedicationLog(
                 userId = med.userId,
-                medicationId = med.id,
+                medicationId = safeMedId,
                 medicationName = med.name,
                 dosage = med.dosage,
                 date = date,
@@ -641,16 +665,17 @@ class CuentaConmigoRepository(
                 takenAt = Timestamp.now()
             )
             InMemoryGuestStore.medicationLogs.value = InMemoryGuestStore.medicationLogs.value.filter {
-                !(it.date == date && it.medicationId == med.id && it.scheduledTime == scheduledTime)
+                !(it.date == date && it.medicationId == safeMedId && it.scheduledTime == scheduledTime)
             } + log
             return
         }
         val uid = requireUserId()
         val colRef = db.collection("users").document(uid).collection("medication_logs")
-        val logDoc = colRef.document("${date}_${med.id}_${scheduledTime.replace(":", "")}")
+        val logDoc = colRef.document("${date}_${safeMedId}_${scheduledTime.replace(":", "")}")
         val payload = mapOf(
+            "id" to logDoc.id,
             "userId" to uid,
-            "medicationId" to med.id,
+            "medicationId" to safeMedId,
             "medicationName" to med.name,
             "dosage" to med.dosage,
             "date" to date,
@@ -666,6 +691,7 @@ class CuentaConmigoRepository(
     }
 
     suspend fun unrecordMedicationTaken(medId: String, date: String, scheduledTime: String) {
+        if (medId.isBlank()) return
         if (isGuest()) {
             InMemoryGuestStore.medicationLogs.value = InMemoryGuestStore.medicationLogs.value.filter {
                 !(it.date == date && it.medicationId == medId && it.scheduledTime == scheduledTime)
@@ -695,7 +721,11 @@ class CuentaConmigoRepository(
             val path = "users/$uid/habits"
             db.collection("users").document(uid).collection("habits")
                 .snapshots()
-                .map { snap -> snap.toObjects(Habit::class.java) }
+                .map { snap ->
+                    snap.documents.mapNotNull { doc ->
+                        doc.toObject(Habit::class.java)?.copy(id = doc.id)
+                    }
+                }
                 .catch { e ->
                     if (e is Exception && auth.currentUser?.uid == uid) {
                         handleFirestoreError(e, OperationType.LIST, path)
@@ -717,6 +747,7 @@ class CuentaConmigoRepository(
         val colRef = db.collection("users").document(uid).collection("habits")
         val docRef = if (habit.id.isNotBlank()) colRef.document(habit.id) else colRef.document()
         val payload = mapOf(
+            "id" to docRef.id,
             "userId" to uid,
             "name" to habit.name,
             "category" to habit.category,
@@ -735,6 +766,7 @@ class CuentaConmigoRepository(
     }
 
     suspend fun deleteHabit(habitId: String) {
+        if (habitId.isBlank()) return
         if (isGuest()) {
             InMemoryGuestStore.habits.value = InMemoryGuestStore.habits.value.filter { it.id != habitId }
             return
@@ -777,7 +809,11 @@ class CuentaConmigoRepository(
             val path = "users/$uid/calendar_events"
             db.collection("users").document(uid).collection("calendar_events")
                 .snapshots()
-                .map { snap -> snap.toObjects(CalendarEvent::class.java) }
+                .map { snap ->
+                    snap.documents.mapNotNull { doc ->
+                        doc.toObject(CalendarEvent::class.java)?.copy(id = doc.id)
+                    }
+                }
                 .catch { e ->
                     if (e is Exception && auth.currentUser?.uid == uid) {
                         handleFirestoreError(e, OperationType.LIST, path)
@@ -799,6 +835,7 @@ class CuentaConmigoRepository(
         val colRef = db.collection("users").document(uid).collection("calendar_events")
         val docRef = if (event.id.isNotBlank()) colRef.document(event.id) else colRef.document()
         val payload = mapOf(
+            "id" to docRef.id,
             "userId" to uid,
             "title" to event.title,
             "type" to event.type,
@@ -816,6 +853,7 @@ class CuentaConmigoRepository(
     }
 
     suspend fun deleteCalendarEvent(eventId: String) {
+        if (eventId.isBlank()) return
         if (isGuest()) {
             InMemoryGuestStore.calendarEvents.value = InMemoryGuestStore.calendarEvents.value.filter { it.id != eventId }
             return

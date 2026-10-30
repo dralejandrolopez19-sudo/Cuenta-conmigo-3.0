@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Medication
-import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -59,17 +58,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.model.Medication
-import com.example.ui.components.AiWellnessAssistantCard
 import com.example.ui.components.PrivacyProtectedText
 import com.example.ui.theme.CharcoalText
-import com.example.ui.theme.CoralPrimary
 import com.example.ui.theme.MutedSlate
 import com.example.ui.theme.SoftCreamBackground
 import com.example.ui.theme.TealLight
 import com.example.ui.theme.TealSecondary
 import com.example.ui.viewmodel.AppViewModel
-import java.util.Calendar
 import java.util.Locale
 
 @Composable
@@ -80,30 +75,23 @@ fun MedicationScreen(
     val medications by viewModel.medications.collectAsState()
     val todayLogs by viewModel.todayMedLogs.collectAsState()
     val liveClock by viewModel.liveClockText.collectAsState()
-    val nextAlarmInfo by viewModel.nextScheduledAlarmInfo.collectAsState()
-    val medicationAiState by viewModel.medicationAiTipState.collectAsState()
     val isStreetModeActive by viewModel.isStreetModeActive.collectAsState()
     val isAiDisguiseEnabled by viewModel.isAiDisguiseEnabled.collectAsState()
     val aiAliases by viewModel.aiDisguiseAliases.collectAsState()
     val revealedIds by viewModel.temporarilyRevealedIds.collectAsState()
 
-    // Estado del Programador de Alarma en pantalla
     var selectedMedicationId by remember { mutableStateOf<String?>(null) }
-    val selectedMedication = medications.firstOrNull { it.id == selectedMedicationId }
+    val selectedMedication = medications.firstOrNull { it.id.isNotBlank() && it.id == selectedMedicationId }
 
     var nameInput by remember { mutableStateOf("") }
     var dosageInput by remember { mutableStateOf("") }
 
-    val initialCal = remember {
-        Calendar.getInstance().apply { add(Calendar.MINUTE, 1) }
-    }
-    var selectedHour by remember { mutableIntStateOf(initialCal.get(Calendar.HOUR_OF_DAY)) }
-    var selectedMinute by remember { mutableIntStateOf(initialCal.get(Calendar.MINUTE)) }
+    var selectedHour by remember { mutableIntStateOf(8) }
+    var selectedMinute by remember { mutableIntStateOf(0) }
     var savedFeedbackText by remember { mutableStateOf<String?>(null) }
 
-    // Cuando el usuario selecciona una pastilla existente, cargar su nombre, dosis y horario
     LaunchedEffect(selectedMedicationId) {
-        val med = medications.firstOrNull { it.id == selectedMedicationId }
+        val med = medications.firstOrNull { it.id.isNotBlank() && it.id == selectedMedicationId }
         if (med != null) {
             nameInput = med.name
             dosageInput = med.dosage
@@ -113,9 +101,6 @@ fun MedicationScreen(
                 selectedHour = parts[0].toIntOrNull() ?: selectedHour
                 selectedMinute = parts[1].toIntOrNull() ?: selectedMinute
             }
-        } else {
-            nameInput = ""
-            dosageInput = ""
         }
     }
 
@@ -128,14 +113,14 @@ fun MedicationScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        // 1. Cabecera Limpia con Hora Actual
+        // 1. Cabecera Limpia
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Pastillas y Alarmas",
+                text = "Pastillas",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = CharcoalText,
@@ -171,7 +156,7 @@ fun MedicationScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 2. Programador de Alarma Directo y Simple
+        // 2. Formulario Simple de Pastilla y Horario
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -203,84 +188,48 @@ fun MedicationScreen(
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Programador de Alarma",
+                            text = if (selectedMedication != null) "Editar Pastilla" else "Agregar Pastilla",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = CharcoalText
                         )
                     }
 
-                    Text(
-                        text = nextAlarmInfo,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TealSecondary
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Selector rápido de pastilla existente o "+ Nueva"
-                if (medications.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
+                    if (selectedMedication != null) {
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (selectedMedicationId == null) TealSecondary else Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFF1F5F9),
                             modifier = Modifier.clickable {
                                 selectedMedicationId = null
+                                nameInput = ""
+                                dosageInput = ""
                                 savedFeedbackText = null
                             }
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Add,
                                     contentDescription = null,
-                                    tint = if (selectedMedicationId == null) Color.White else CharcoalText,
+                                    tint = TealSecondary,
                                     modifier = Modifier.size(13.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "Nueva pastilla",
+                                    text = "Nueva",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = if (selectedMedicationId == null) Color.White else CharcoalText
-                                )
-                            }
-                        }
-
-                        medications.forEach { med ->
-                            val isSelected = selectedMedicationId == med.id
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isSelected) TealSecondary else Color(0xFFF1F5F9),
-                                modifier = Modifier.clickable {
-                                    selectedMedicationId = med.id
-                                    savedFeedbackText = null
-                                }
-                            ) {
-                                Text(
-                                    text = med.name,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) Color.White else CharcoalText,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    color = TealSecondary
                                 )
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(10.dp))
                 }
 
-                // Campos simples de Nombre y Dosis en una sola fila
+                Spacer(modifier = Modifier.height(12.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -307,7 +256,7 @@ fun MedicationScreen(
                             savedFeedbackText = null
                         },
                         label = { Text("Dosis", fontSize = 12.sp) },
-                        placeholder = { Text("Ej. 75mg", fontSize = 12.sp) },
+                        placeholder = { Text("Ej. 75 mg", fontSize = 12.sp) },
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
@@ -318,7 +267,7 @@ fun MedicationScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Selector Digital de Hora y Minuto (HH : MM)
+                // Selector de Hora y Minuto (HH : MM)
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = Color(0xFFF8FAFC),
@@ -334,7 +283,6 @@ fun MedicationScreen(
                             horizontalArrangement = Arrangement.Center,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            // Hora (00-23)
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 IconButton(
                                     onClick = {
@@ -389,7 +337,6 @@ fun MedicationScreen(
                                 modifier = Modifier.padding(horizontal = 10.dp)
                             )
 
-                            // Minuto (00-59)
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 IconButton(
                                     onClick = {
@@ -439,33 +386,23 @@ fun MedicationScreen(
 
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        // Botones rápidos de hora
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.horizontalScroll(rememberScrollState())
                         ) {
-                            QuickTimeChip(
-                                label = "Ahora",
-                                onClick = {
-                                    val now = Calendar.getInstance()
-                                    selectedHour = now.get(Calendar.HOUR_OF_DAY)
-                                    selectedMinute = now.get(Calendar.MINUTE)
-                                    savedFeedbackText = null
-                                }
-                            )
-                            QuickTimeChip(
-                                label = "+1 min",
-                                onClick = {
-                                    val cal = Calendar.getInstance().apply { add(Calendar.MINUTE, 1) }
-                                    selectedHour = cal.get(Calendar.HOUR_OF_DAY)
-                                    selectedMinute = cal.get(Calendar.MINUTE)
-                                    savedFeedbackText = null
-                                }
-                            )
                             QuickTimeChip(
                                 label = "08:00",
                                 onClick = {
                                     selectedHour = 8
+                                    selectedMinute = 0
+                                    savedFeedbackText = null
+                                }
+                            )
+                            QuickTimeChip(
+                                label = "12:00",
+                                onClick = {
+                                    selectedHour = 12
                                     selectedMinute = 0
                                     savedFeedbackText = null
                                 }
@@ -479,9 +416,17 @@ fun MedicationScreen(
                                 }
                             )
                             QuickTimeChip(
-                                label = "21:00",
+                                label = "20:00",
                                 onClick = {
-                                    selectedHour = 21
+                                    selectedHour = 20
+                                    selectedMinute = 0
+                                    savedFeedbackText = null
+                                }
+                            )
+                            QuickTimeChip(
+                                label = "22:00",
+                                onClick = {
+                                    selectedHour = 22
                                     selectedMinute = 0
                                     savedFeedbackText = null
                                 }
@@ -492,7 +437,6 @@ fun MedicationScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Botón Principal de Guardar y Activar Alarma
                 val finalName = nameInput.trim().ifBlank { selectedMedication?.name ?: "" }
                 val finalDosage = dosageInput.trim().ifBlank { selectedMedication?.dosage ?: "1 dosis" }
 
@@ -505,11 +449,10 @@ fun MedicationScreen(
                             dosage = finalDosage,
                             timeStr = formattedAlarmTime
                         )
-                        savedFeedbackText = "Alarma programada: $targetName a las $formattedAlarmTime"
-                        if (selectedMedication == null) {
-                            nameInput = ""
-                            dosageInput = ""
-                        }
+                        savedFeedbackText = "Guardado: $targetName a las $formattedAlarmTime"
+                        selectedMedicationId = null
+                        nameInput = ""
+                        dosageInput = ""
                     },
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = TealSecondary),
@@ -526,9 +469,9 @@ fun MedicationScreen(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = if (selectedMedication != null) {
-                            "Actualizar Alarma ($formattedAlarmTime)"
+                            "Actualizar Pastilla ($formattedAlarmTime)"
                         } else {
-                            "Programar Alarma ($formattedAlarmTime)"
+                            "Guardar Pastilla ($formattedAlarmTime)"
                         },
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
@@ -562,9 +505,9 @@ fun MedicationScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 3. Lista Única y Limpia de Pastillas
+        // 3. Lista Limpia de Pastillas
         Text(
-            text = "Mis Pastillas Programadas",
+            text = "Mis Pastillas",
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             color = CharcoalText,
@@ -587,11 +530,11 @@ fun MedicationScreen(
                         imageVector = Icons.Default.Medication,
                         contentDescription = null,
                         tint = Color(0xFFCBD5E0),
-                        modifier = Modifier.size(40.dp)
+                        modifier = Modifier.size(38.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Escribe tu pastilla arriba, elige la hora y pulsa 'Programar Alarma'.",
+                        text = "Aún no tienes pastillas registradas.",
                         fontSize = 12.sp,
                         color = MutedSlate,
                         textAlign = TextAlign.Center
@@ -600,11 +543,14 @@ fun MedicationScreen(
             }
         } else {
             medications.forEach { med ->
-                val medItemId = "med_${med.id}"
+                val medItemId = "med_${med.id.ifBlank { med.name }}"
                 val isMedRevealed = revealedIds.contains(medItemId)
                 val primaryTime = med.scheduledTimes.firstOrNull() ?: "08:00"
-                val isTakenToday = todayLogs.any { it.medicationId == med.id && it.scheduledTime == primaryTime }
-                val isSelectedInProgrammer = selectedMedicationId == med.id
+                val isTakenToday = todayLogs.any {
+                    (it.medicationId == med.id || (med.id.isBlank() && it.medicationName == med.name)) &&
+                        it.scheduledTime == primaryTime
+                }
+                val isSelectedInProgrammer = selectedMedicationId != null && selectedMedicationId == med.id
 
                 Card(
                     shape = RoundedCornerShape(16.dp),
@@ -641,8 +587,10 @@ fun MedicationScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable {
-                                    selectedMedicationId = med.id
-                                    savedFeedbackText = null
+                                    if (med.id.isNotBlank()) {
+                                        selectedMedicationId = med.id
+                                        savedFeedbackText = null
+                                    }
                                 }
                         ) {
                             PrivacyProtectedText(
@@ -658,24 +606,25 @@ fun MedicationScreen(
                                 color = if (isTakenToday) Color(0xFF276749) else CharcoalText
                             )
                             Text(
-                                text = if (isTakenToday) "Tomada hoy" else "Toca la hora para cambiar alarma",
+                                text = if (isTakenToday) "Tomada hoy" else "Toca para editar horario",
                                 fontSize = 11.sp,
                                 color = MutedSlate
                             )
                         }
 
-                        // Chip de Hora (tocar para cargar en el programador de arriba)
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = if (isTakenToday) Color(0xFFC6F6D5) else TealLight,
                             modifier = Modifier.clickable {
-                                selectedMedicationId = med.id
-                                savedFeedbackText = null
+                                if (med.id.isNotBlank()) {
+                                    selectedMedicationId = med.id
+                                    savedFeedbackText = null
+                                }
                             }
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Alarm,
@@ -693,35 +642,25 @@ fun MedicationScreen(
                             }
                         }
 
-                        // Botón para hacer sonar la alarma de esta pastilla ahora mismo
-                        IconButton(
-                            onClick = { viewModel.triggerAlarmForMedication(med) },
-                            modifier = Modifier
-                                .size(34.dp)
-                                .testTag("ring_med_alarm_${med.id}")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.NotificationsActive,
-                                contentDescription = "Sonar alarma de ${med.name}",
-                                tint = CoralPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
+                        Spacer(modifier = Modifier.width(4.dp))
 
-                        // Botón para eliminar pastilla
                         IconButton(
                             onClick = {
                                 if (selectedMedicationId == med.id) {
                                     selectedMedicationId = null
+                                    nameInput = ""
+                                    dosageInput = ""
                                 }
                                 viewModel.deleteMedication(med.id)
                             },
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("delete_med_${med.id}")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.DeleteOutline,
                                 contentDescription = "Eliminar ${med.name}",
-                                tint = MutedSlate.copy(alpha = 0.7f),
+                                tint = MutedSlate.copy(alpha = 0.75f),
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -730,19 +669,7 @@ fun MedicationScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // 4. Orientación IA Automática al pie
-        AiWellnessAssistantCard(
-            title = "Orientación de Tomas",
-            subtitle = "Consejos automáticos según tus horarios programados.",
-            state = medicationAiState,
-            accentColor = TealSecondary,
-            accentBgColor = TealLight,
-            testTag = "medication_ai_card"
-        )
-
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
@@ -758,7 +685,7 @@ private fun QuickTimeChip(
             containerColor = Color(0xFFEDF2F7),
             contentColor = CharcoalText
         ),
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 3.dp),
         modifier = Modifier
             .defaultMinSize(minWidth = 1.dp, minHeight = 26.dp)
             .height(26.dp)

@@ -339,7 +339,6 @@ fun attemptAutoSignIn(
 }
 
 fun signOutUser(
-    context: Context,
     credentialManager: CredentialManager,
     onSignOutComplete: () -> Unit,
     scope: CoroutineScope

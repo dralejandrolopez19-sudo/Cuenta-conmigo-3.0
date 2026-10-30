@@ -1,13 +1,12 @@
 package com.example.data.model
 
 import com.google.firebase.Timestamp
-import com.google.firebase.firestore.DocumentId
 import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.ServerTimestamp
 
 @IgnoreExtraProperties
 data class UserProfile(
-    @DocumentId val id: String = "",
+    val id: String = "",
     val userId: String = "",
     val displayName: String = "Dr. Oliver Hernández",
     val email: String = "",
@@ -17,7 +16,7 @@ data class UserProfile(
 
 @IgnoreExtraProperties
 data class MoodEntry(
-    @DocumentId val id: String = "",
+    val id: String = "",
     val userId: String = "",
     val level: Int = 3, // 1: Muy bajo, 2: Desanimado, 3: Estable, 4: Bien, 5: Muy bien
     val levelLabel: String = "Estable",
@@ -29,7 +28,7 @@ data class MoodEntry(
 
 @IgnoreExtraProperties
 data class JournalEntry(
-    @DocumentId val id: String = "",
+    val id: String = "",
     val userId: String = "",
     val title: String = "",
     val content: String = "",
@@ -40,7 +39,7 @@ data class JournalEntry(
 
 @IgnoreExtraProperties
 data class Medication(
-    @DocumentId val id: String = "",
+    val id: String = "",
     val userId: String = "",
     val name: String = "",
     val dosage: String = "",
@@ -53,7 +52,7 @@ data class Medication(
 
 @IgnoreExtraProperties
 data class MedicationLog(
-    @DocumentId val id: String = "",
+    val id: String = "",
     val userId: String = "",
     val medicationId: String = "",
     val medicationName: String = "",
@@ -65,7 +64,7 @@ data class MedicationLog(
 
 @IgnoreExtraProperties
 data class Habit(
-    @DocumentId val id: String = "",
+    val id: String = "",
     val userId: String = "",
     val name: String = "",
     val category: String = "Salud Mental", // Salud Mental, Físico y Sueño, Social, Emocional
@@ -78,7 +77,7 @@ data class Habit(
 
 @IgnoreExtraProperties
 data class CalendarEvent(
-    @DocumentId val id: String = "",
+    val id: String = "",
     val userId: String = "",
     val title: String = "",
     val type: String = "Cita/Evento", // Cita/Evento, Sesión, Terapia, Recordatorio
@@ -90,7 +89,7 @@ data class CalendarEvent(
 
 @IgnoreExtraProperties
 data class ClinicalScaleAssessment(
-    @DocumentId val id: String = "",
+    val id: String = "",
     val userId: String = "",
     val scaleType: String = "", // "PHQ-9", "GAD-7", "EVA"
     val scaleName: String = "",

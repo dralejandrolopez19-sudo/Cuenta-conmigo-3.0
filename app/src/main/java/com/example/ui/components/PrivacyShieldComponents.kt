@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.ScreenLockPortrait
 import androidx.compose.material.icons.filled.Security
@@ -35,7 +34,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -55,7 +53,6 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.CharcoalText
-import com.example.ui.theme.CoralPrimary
 import com.example.ui.theme.MutedSlate
 import com.example.ui.theme.TealLight
 import com.example.ui.theme.TealSecondary
@@ -68,8 +65,6 @@ val PrivacyEmeraldLight = Color(0xFFCCFBF1)
 fun PrivacyShieldBanner(
     isStreetModeActive: Boolean,
     triggerReason: String,
-    isAiDisguiseEnabled: Boolean,
-    isGeneratingAi: Boolean,
     onOpenSettings: () -> Unit,
     onDisableStreetMode: () -> Unit,
     modifier: Modifier = Modifier
@@ -109,7 +104,7 @@ fun PrivacyShieldBanner(
                             .background(PrivacyEmerald.copy(alpha = 0.25f))
                     ) {
                         Icon(
-                            imageVector = if (isAiDisguiseEnabled) Icons.Default.AutoAwesome else Icons.Default.VisibilityOff,
+                            imageVector = Icons.Default.VisibilityOff,
                             contentDescription = "Escudo de privacidad activo",
                             tint = Color(0xFF5EEAD4),
                             modifier = Modifier.size(16.dp)
@@ -119,19 +114,11 @@ fun PrivacyShieldBanner(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = if (isAiDisguiseEnabled) "Modo Calle + Camuflaje IA" else "Modo Calle Activo",
+                                text = "Modo Calle Activo",
                                 color = Color.White,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
-                            if (isGeneratingAi) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(11.dp),
-                                    color = Color(0xFF5EEAD4),
-                                    strokeWidth = 1.5.dp
-                                )
-                            }
                         }
                         Text(
                             text = triggerReason.ifBlank { "Toca cualquier dato oculto para verlo 5 s" },
@@ -273,14 +260,14 @@ fun PrivacyProtectedText(
                     modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = "Camuflado con IA",
+                        imageVector = Icons.Default.VisibilityOff,
+                        contentDescription = "Dato protegido",
                         tint = Color(0xFF6D28D9),
                         modifier = Modifier.size(10.dp)
                     )
                     Spacer(modifier = Modifier.width(3.dp))
                     Text(
-                        text = "IA • Ver",
+                        text = "Ver",
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF6D28D9)
@@ -335,14 +322,9 @@ fun PrivacyProtectedText(
 fun StreetPrivacySettingsDialog(
     isStreetModeActive: Boolean,
     autoMotionEnabled: Boolean,
-    isAiDisguiseEnabled: Boolean,
     isSensorAvailable: Boolean,
-    isGeneratingAi: Boolean,
-    aiStatusMessage: String?,
     onToggleStreetMode: (Boolean) -> Unit,
     onToggleAutoMotion: (Boolean) -> Unit,
-    onToggleAiDisguise: (Boolean) -> Unit,
-    onGenerateAiCamouflageNow: () -> Unit,
     onSimulateStreetMotion: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -512,94 +494,7 @@ fun StreetPrivacySettingsDialog(
                     }
                 }
 
-                // 3. Camuflaje Inteligente con IA (Gemini)
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F3FF)),
-                    border = BorderStroke(1.dp, Color(0xFFDDD6FE)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = Color(0xFF6D28D9),
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Camuflaje Inteligente con IA",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = CharcoalText
-                                )
-                                Text(
-                                    text = "En lugar de puntos ocultos, usa IA (Gemini) para mostrar en pantalla textos neutros de tareas cotidianas mientras estás rodeado de gente.",
-                                    fontSize = 12.sp,
-                                    color = MutedSlate,
-                                    lineHeight = 16.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Switch(
-                                checked = isAiDisguiseEnabled,
-                                onCheckedChange = onToggleAiDisguise,
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = Color(0xFF6D28D9)
-                                ),
-                                modifier = Modifier.testTag("toggle_ai_disguise_switch")
-                            )
-                        }
-
-                        if (isGeneratingAi || !aiStatusMessage.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color.White.copy(alpha = 0.7f), RoundedCornerShape(10.dp))
-                                    .padding(horizontal = 10.dp, vertical = 8.dp)
-                            ) {
-                                if (isGeneratingAi) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(14.dp),
-                                        color = Color(0xFF6D28D9),
-                                        strokeWidth = 1.8.dp
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Sincronizando alias discretos con IA...",
-                                        fontSize = 11.sp,
-                                        color = Color(0xFF5B21B6),
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                } else if (!aiStatusMessage.isNullOrBlank()) {
-                                    Icon(
-                                        imageVector = Icons.Default.AutoAwesome,
-                                        contentDescription = null,
-                                        tint = Color(0xFF6D28D9),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = aiStatusMessage,
-                                        fontSize = 11.sp,
-                                        color = Color(0xFF5B21B6),
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 4. Información sobre protección de pantalla del sistema (FLAG_SECURE)
+                // 3. Información sobre protección de pantalla del sistema (FLAG_SECURE)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier

@@ -224,17 +224,17 @@ fun CuentaConmigoTopBar(
                     modifier = Modifier.testTag("menu_item_toggle_street_mode")
                 )
 
-                // Opción 2: Configuración avanzada del Escudo (Movimiento e Inteligencia Artificial)
+                // Opción 2: Configuración del Escudo de Privacidad
                 DropdownMenuItem(
                     text = {
                         Column {
                             Text(
-                                text = "Opciones de Modo Calle e IA",
+                                text = "Configuración de Modo Calle",
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.sp
                             )
                             Text(
-                                text = "Detección por movimiento y camuflaje IA",
+                                text = "Detección por movimiento y privacidad en público",
                                 fontSize = 11.sp,
                                 color = MutedSlate
                             )
